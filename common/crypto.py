@@ -5,6 +5,7 @@ Implements:
 - Server authentication via pinned X.509 certificate and RSA-PSS (SHA-256)
 - ECDH shared secret computation (X25519) with immediate memory zeroization
 - HKDF-SHA256 (HKDF-Extract + HKDF-Expand) directional key derivation (Key_A2B, Key_B2A)
+- AES-128-GCM Authenticated Encryption with Associated Data (AEAD), Nonce & AAD construction
 """
 
 from __future__ import annotations
@@ -13,12 +14,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import hmac
+import struct
 import uuid
 
 from cryptography import x509
-from cryptography.exceptions import InvalidSignature
+from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa, utils, x25519
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDFExpand
 
 X25519_KEY_SIZE = 32
@@ -26,6 +29,12 @@ CLIENT_ID_SIZE = 16
 SALT_SIZE = 16
 AES_KEY_SIZE = 16
 IV_BASE_SIZE = 4
+SEQ_NO_SIZE = 8
+NONCE_SIZE = 12
+GCM_TAG_SIZE = 16
+AAD_SIZE = 40
+MAX_PLAINTEXT_SIZE = 4096
+MAX_SEQ_NO = (1 << 64) - 1
 MIN_RSA_KEY_BITS = 2048
 
 HKDF_INFO_A2B = b"A2B"
@@ -367,4 +376,82 @@ def derive_e2e_session_keys(
             zeroize(shared_secret)
         if prk:
             zeroize(prk)
+
+
+def build_nonce(iv_base: bytes, seq_no: int) -> bytes:
+    """Construct the 12-byte AES-GCM Nonce: IV_base (4B) || seq_no (8B, big-endian)."""
+    if len(iv_base) != IV_BASE_SIZE:
+        raise ValueError(f"iv_base must be {IV_BASE_SIZE} bytes, got {len(iv_base)}.")
+    if not (0 <= seq_no <= MAX_SEQ_NO):
+        raise ValueError("seq_no must be an unsigned 64-bit integer.")
+    return bytes(iv_base) + struct.pack("!Q", seq_no)
+
+
+def build_aad(sender_id: bytes, recipient_id: bytes, seq_no: int) -> bytes:
+    """Construct the 40-byte Associated Data (AAD):
+    sender_id (16B) || recipient_id (16B) || seq_no (8B, big-endian).
+    """
+    if len(sender_id) != CLIENT_ID_SIZE:
+        raise ValueError(f"sender_id must be {CLIENT_ID_SIZE} bytes.")
+    if len(recipient_id) != CLIENT_ID_SIZE:
+        raise ValueError(f"recipient_id must be {CLIENT_ID_SIZE} bytes.")
+    if not (0 <= seq_no <= MAX_SEQ_NO):
+        raise ValueError("seq_no must be an unsigned 64-bit integer.")
+    return bytes(sender_id) + bytes(recipient_id) + struct.pack("!Q", seq_no)
+
+
+def encrypt_aes_gcm(
+    key: bytes,
+    nonce: bytes,
+    plaintext: bytes,
+    aad: bytes,
+) -> tuple[bytes, bytes]:
+    """Encrypt plaintext using AES-128-GCM with AAD.
+
+    Returns:
+        A tuple of (ciphertext, tag) where tag is 16 bytes.
+    """
+    if len(key) != AES_KEY_SIZE:
+        raise ValueError(f"AES-128-GCM key must be {AES_KEY_SIZE} bytes, got {len(key)}.")
+    if len(nonce) != NONCE_SIZE:
+        raise ValueError(f"Nonce must be {NONCE_SIZE} bytes, got {len(nonce)}.")
+    if len(plaintext) > MAX_PLAINTEXT_SIZE:
+        raise ValueError(
+            f"Plaintext size ({len(plaintext)} B) exceeds maximum bound ({MAX_PLAINTEXT_SIZE} B)."
+        )
+
+    aesgcm = AESGCM(bytes(key))
+    ct_with_tag = aesgcm.encrypt(bytes(nonce), bytes(plaintext), bytes(aad))
+    ciphertext = ct_with_tag[:-GCM_TAG_SIZE]
+    tag = ct_with_tag[-GCM_TAG_SIZE:]
+    return ciphertext, tag
+
+
+def decrypt_aes_gcm(
+    key: bytes,
+    nonce: bytes,
+    ciphertext: bytes,
+    tag: bytes,
+    aad: bytes,
+) -> bytes:
+    """Decrypt and verify an AES-128-GCM payload and 16-byte authentication tag.
+
+    Raises:
+        InvalidTag: If the ciphertext, AAD, nonce, or tag was tampered with.
+    """
+    if len(key) != AES_KEY_SIZE:
+        raise ValueError(f"AES-128-GCM key must be {AES_KEY_SIZE} bytes, got {len(key)}.")
+    if len(nonce) != NONCE_SIZE:
+        raise ValueError(f"Nonce must be {NONCE_SIZE} bytes, got {len(nonce)}.")
+    if len(tag) != GCM_TAG_SIZE:
+        raise ValueError(f"GCM tag must be {GCM_TAG_SIZE} bytes, got {len(tag)}.")
+    if len(ciphertext) > MAX_PLAINTEXT_SIZE:
+        raise ValueError(
+            f"Ciphertext size ({len(ciphertext)} B) exceeds maximum bound ({MAX_PLAINTEXT_SIZE} B)."
+        )
+
+    aesgcm = AESGCM(bytes(key))
+    # InvalidTag is raised directly if verification fails
+    return aesgcm.decrypt(bytes(nonce), bytes(ciphertext) + bytes(tag), bytes(aad))
+
 
