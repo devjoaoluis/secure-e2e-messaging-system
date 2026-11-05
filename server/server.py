@@ -27,6 +27,8 @@ from common.crypto import (
 )
 from common.protocol import (
     ClientHello,
+    E2EFrame,
+    PacketType,
     PeerKeyAnnouncement,
     ServerHello,
     read_tcp_frame,
@@ -212,5 +214,45 @@ class RelayServer:
         session: ClientSession,
         raw_frame: bytes,
     ) -> None:
-        """Placeholder for E2E frame routing (implemented in next branch)."""
-        _ = (session, raw_frame)
+        """Zero-Knowledge Relay: inspect only the routing header (`sender_id`, `recipient_id`, `seq_no`)
+        and forward the opaque encrypted frame bytes to the target recipient without decrypting.
+        """
+        frame_bytes = (
+            raw_frame[1:]
+            if (raw_frame and raw_frame[0] == PacketType.E2E_DATA and len(raw_frame) > 1)
+            else raw_frame
+        )
+        e2e_frame = E2EFrame.unpack(frame_bytes)
+
+        if e2e_frame.sender_id != session.client_id:
+            logger.warning(
+                "Dropped spoofed E2E frame: authenticated client_id=%s tried to send as sender_id=%s",
+                session.client_id.hex()[:12],
+                e2e_frame.sender_id.hex()[:12],
+            )
+            return
+
+        target_session = self.session_store.get_session(e2e_frame.recipient_id)
+        if target_session is None or target_session.writer is None or target_session.writer.is_closing():
+            logger.warning(
+                "Dropped E2E frame from sender_id=%s: recipient_id=%s is not connected",
+                session.client_id.hex()[:12],
+                e2e_frame.recipient_id.hex()[:12],
+            )
+            return
+
+        self.session_store.record_relayed_frame(
+            sender_id=session.client_id,
+            recipient_id=e2e_frame.recipient_id,
+            seq_no=e2e_frame.seq_no,
+            enforce_monotonic=False,
+        )
+        await write_tcp_frame(target_session.writer, raw_frame)
+        logger.info(
+            "Relayed opaque E2E frame: sender_id=%s -> recipient_id=%s (seq_no=%d, ciphertext_len=%dB)",
+            session.client_id.hex()[:12],
+            e2e_frame.recipient_id.hex()[:12],
+            e2e_frame.seq_no,
+            len(e2e_frame.ciphertext),
+        )
+
