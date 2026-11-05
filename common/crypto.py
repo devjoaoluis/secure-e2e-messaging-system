@@ -11,9 +11,10 @@ Implements:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
+from pathlib import Path
 import struct
 import uuid
 
@@ -23,6 +24,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa, utils, x25519
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDFExpand
+from cryptography.x509.oid import NameOID
 
 X25519_KEY_SIZE = 32
 CLIENT_ID_SIZE = 16
@@ -150,6 +152,107 @@ def load_x509_certificate(cert_data: bytes) -> x509.Certificate:
             f"Server RSA key size ({pub_key.key_size} bits) is below minimum {MIN_RSA_KEY_BITS} bits."
         )
     return cert
+
+
+def load_rsa_private_key(
+    key_data: bytes,
+    password: bytes | None = None,
+) -> rsa.RSAPrivateKey:
+    """Load an RSA private key from PEM or DER bytes and enforce >= 2048 bits."""
+    if not key_data:
+        raise CryptoError("RSA private key data cannot be empty.")
+    try:
+        if b"-----BEGIN" in key_data:
+            private_key = serialization.load_pem_private_key(key_data, password=password)
+        else:
+            private_key = serialization.load_der_private_key(key_data, password=password)
+    except Exception as exc:
+        raise CryptoError(f"Failed to parse RSA private key: {exc}") from exc
+
+    if not isinstance(private_key, rsa.RSAPrivateKey):
+        raise CryptoError("Loaded private key is not an RSA private key.")
+    if private_key.key_size < MIN_RSA_KEY_BITS:
+        raise CryptoError(
+            f"RSA private key size ({private_key.key_size} bits) is below minimum {MIN_RSA_KEY_BITS} bits."
+        )
+    return private_key
+
+
+def generate_self_signed_rsa_cert(
+    key_size: int = MIN_RSA_KEY_BITS,
+    common_name: str = "SecureRelayServer",
+    valid_days: int = 365,
+) -> tuple[rsa.RSAPrivateKey, bytes, bytes]:
+    """Generate an RSA keypair (>= 2048 bits) and a self-signed X.509 certificate.
+
+    Returns:
+        A tuple of (RSAPrivateKey, private_key_pem_bytes, certificate_pem_bytes).
+    """
+    if key_size < MIN_RSA_KEY_BITS:
+        raise CryptoError(
+            f"RSA key size ({key_size} bits) must be at least {MIN_RSA_KEY_BITS} bits."
+        )
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=key_size)
+    subject = issuer = x509.Name(
+        [x509.NameAttribute(NameOID.COMMON_NAME, common_name)]
+    )
+    now = datetime.now(timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(private_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=valid_days))
+        .sign(private_key, hashes.SHA256())
+    )
+    key_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    cert_pem = cert.public_bytes(serialization.Encoding.PEM)
+    return private_key, key_pem, cert_pem
+
+
+def ensure_server_credentials(
+    cert_path: str | Path,
+    key_path: str | Path,
+    key_size: int = MIN_RSA_KEY_BITS,
+    auto_generate: bool = True,
+) -> tuple[rsa.RSAPrivateKey, bytes]:
+    """Load and validate server RSA private key and X.509 certificate from disk,
+    or generate them if missing and `auto_generate` is True.
+
+    Verifies that both key and certificate have >= 2048 bits and share the same modulus/exponent.
+    """
+    c_path = Path(cert_path)
+    k_path = Path(key_path)
+
+    if not c_path.exists() or not k_path.exists():
+        if not auto_generate:
+            raise CryptoError(
+                f"Server credentials not found at {c_path} / {k_path}."
+            )
+        c_path.parent.mkdir(parents=True, exist_ok=True)
+        k_path.parent.mkdir(parents=True, exist_ok=True)
+        private_key, key_pem, cert_pem = generate_self_signed_rsa_cert(key_size=key_size)
+        k_path.write_bytes(key_pem)
+        c_path.write_bytes(cert_pem)
+        return private_key, cert_pem
+
+    cert_bytes = c_path.read_bytes()
+    key_bytes = k_path.read_bytes()
+    cert = load_x509_certificate(cert_bytes)
+    private_key = load_rsa_private_key(key_bytes)
+
+    cert_pub = cert.public_key()
+    assert isinstance(cert_pub, rsa.RSAPublicKey)
+    if cert_pub.public_numbers() != private_key.public_key().public_numbers():
+        raise CryptoError("Server certificate public key does not match server RSA private key.")
+
+    return private_key, cert_bytes
 
 
 def sign_server_handshake(
