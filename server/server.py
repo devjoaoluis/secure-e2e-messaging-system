@@ -8,6 +8,7 @@ Implements:
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 from pathlib import Path
@@ -21,6 +22,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 from cryptography.hazmat.primitives.asymmetric import rsa
 
 from common.crypto import (
+    CryptoError,
     ensure_server_credentials,
     generate_x25519_keypair,
     sign_server_handshake,
@@ -28,6 +30,7 @@ from common.crypto import (
 from common.protocol import (
     ClientHello,
     E2EFrame,
+    FramingError,
     PacketType,
     PeerKeyAnnouncement,
     ServerHello,
@@ -185,24 +188,61 @@ class RelayServer:
                 except Exception:
                     pass
 
+    async def _broadcast_peer_disconnect(self, disconnected_client_id: bytes) -> None:
+        """Notify remaining active peers that a client disconnected so they wipe its session."""
+        disconnect_packet = bytes([PacketType.PEER_DISCONNECT]) + bytes(disconnected_client_id)
+        for peer in self.session_store.get_other_sessions(disconnected_client_id):
+            if peer.writer is not None and not peer.writer.is_closing():
+                try:
+                    await write_tcp_frame(peer.writer, disconnect_packet)
+                except Exception:
+                    pass
+
     async def _handle_client_connection(
         self,
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ) -> None:
         session: ClientSession | None = None
+        peername = writer.get_extra_info("peername")
         try:
             session = await self._perform_handshake(reader, writer)
             while True:
                 raw_frame = await read_tcp_frame(reader)
                 await self._handle_client_frame(session, raw_frame)
-        except (EOFError, asyncio.CancelledError):
+        except EOFError:
+            logger.info(
+                "Client disconnected cleanly (client_id=%s)",
+                session.client_id.hex()[:12] if session else str(peername),
+            )
+        except FramingError as exc:
+            logger.warning(
+                "Framing violation from client (%s); terminating connection: %s",
+                session.client_id.hex()[:12] if session else str(peername),
+                exc,
+            )
+        except (CryptoError, ValueError) as exc:
+            logger.warning(
+                "Handshake or cryptographic validation error from client (%s): %s",
+                session.client_id.hex()[:12] if session else str(peername),
+                exc,
+            )
+        except asyncio.CancelledError:
             pass
         except Exception as exc:
-            logger.warning("Client connection error: %s", exc)
+            logger.warning("Unexpected client connection error: %s", exc)
         finally:
             if session is not None:
-                self.session_store.remove_session(session.client_id, expected_session=session)
+                removed = self.session_store.remove_session(
+                    session.client_id,
+                    expected_session=session,
+                )
+                if removed is not None:
+                    logger.info(
+                        "Removed client session from memory: client_id=%s",
+                        session.client_id.hex()[:12],
+                    )
+                    await self._broadcast_peer_disconnect(session.client_id)
             try:
                 writer.close()
                 await writer.wait_closed()
@@ -255,4 +295,62 @@ class RelayServer:
             e2e_frame.seq_no,
             len(e2e_frame.ciphertext),
         )
+
+
+async def run_server(
+    host: str,
+    port: int,
+    cert_path: str,
+    key_path: str,
+) -> None:
+    """Start the relay server and run until interrupted."""
+    server = RelayServer(
+        host=host,
+        port=port,
+        cert_path=cert_path,
+        key_path=key_path,
+    )
+    await server.start()
+    assert server._server is not None
+    try:
+        async with server._server:
+            await server._server.serve_forever()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await server.stop()
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Multi-Client E2E Zero-Knowledge Relay Server")
+    parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=9000, help="TCP listen port (default: 9000)")
+    parser.add_argument(
+        "--cert",
+        default="certs/server.crt",
+        help="Path to server X.509 certificate (default: certs/server.crt)",
+    )
+    parser.add_argument(
+        "--key",
+        default="certs/server.key",
+        help="Path to server RSA private key (default: certs/server.key)",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    args = parse_args(argv)
+    try:
+        asyncio.run(run_server(args.host, args.port, args.cert, args.key))
+    except KeyboardInterrupt:
+        logger.info("Server interrupted by user.")
+
+
+if __name__ == "__main__":
+    main()
+
 
