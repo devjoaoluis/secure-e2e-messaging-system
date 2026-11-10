@@ -1,16 +1,3 @@
-"""Cliente de Mensageria Segura E2E Multi-Cliente & CLI Interativa (client/client.py).
-
-Implementa o fluxo de protocolo do cliente definido em docs/context.md:
-1. Geração de chaves efêmeras X25519 na inicialização (`SessionManager`).
-2. Conexão TCP e Registro do Cliente (`client_id + pk_client`).
-3. Verificação de prova do servidor: valida o `server.crt` fixado (pinned) e a assinatura RSA-PSS sobre
-   H = SHA256(pk_server || pk_client || client_id || salt).
-4. Recepção de anúncio de chaves públicas de peers e derivação de chaves com HKDF-SHA256.
-5. Cifração e decifração assíncrona de frames E2E com AES-128-GCM e checagens monotónicas anti-replay.
-6. Sanitização estrita de logs (chaves privadas, segredos compartilhados, chaves simétricas, nonces e plaintexts nunca são logados)
-   e limpeza de memória transitória ao desconectar.
-"""
-
 from __future__ import annotations
 
 import argparse

@@ -1,19 +1,3 @@
-"""Armazenamento de sessões ativas de clientes e tabela de roteamento no servidor (server/session_store.py).
-
-Mantém o dicionário `sessions` mapeando cada `client_id` (16B) ativo para os seus
-metadados de `ClientSession`:
-- `client_id` (UUIDv4 de 16B)
-- `pk_client` (chave pública efêmera X25519 de 32B)
-- `salt_srv` (salt aleatório de 16B do servidor)
-- Contadores de roteamento (`frames_sent`, `frames_received`) e contadores de sequência (`seq_counters`)
-- `asyncio.StreamWriter` associado
-
-Aplica o Modelo de Memória Transitória:
-- A desconexão limpa todo o estado de sessão do cliente da memória.
-- Reconectar com um `client_id` existente descarta a sessão anterior e força
-  um novo handshake completo e renegociação de chaves.
-"""
-
 from __future__ import annotations
 
 import asyncio

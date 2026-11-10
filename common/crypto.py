@@ -1,13 +1,3 @@
-"""Primitivas criptográficas para o Sistema Multi-Cliente de Mensageria Segura E2E.
-
-Implementa:
-- Geração e serialização de chaves efêmeras X25519 (Sigilo Perfeito Para Frente / PFS)
-- Autenticação do servidor via certificado X.509 fixado (pinned) e RSA-PSS (SHA-256)
-- Cálculo de segredo compartilhado ECDH (X25519) com zeroização imediata de memória
-- Derivação direcionada de chaves via HKDF-SHA256 (HKDF-Extract + HKDF-Expand) (Key_A2B, Key_B2A)
-- Cifração autenticada AES-128-GCM com dados associados (AEAD), construção de Nonce e AAD
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

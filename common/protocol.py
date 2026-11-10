@@ -1,17 +1,3 @@
-"""Utilitários de enquadramento de protocolo, serialização e empacotamento.
-
-Especificações de docs/context.md:
-- Enquadramento TCP: Prefixo de tamanho de 4 bytes em formato big-endian (!I) + payload bruto.
-- Frame de Aplicação Cifrado E2E:
-  +-------------+----------------+------------------+--------------+-------------------+---------------+
-  | Nonce (12B) | sender_id (16B)| recipient_id(16B)| seq_no (8B)  | Ciphertext (var)  | Tag (16B)     |
-  +-------------+----------------+------------------+--------------+-------------------+---------------+
-  |<----------------------------- AAD ---------------------------->|
-  * Construção do Nonce (12 bytes): IV_base (4B) || seq_no (8B, big-endian).
-  * Dados Associados (AAD): sender_id (16B) || recipient_id (16B) || seq_no (8B).
-  * Limite do Payload: Tamanho máximo de texto claro por mensagem é 4096 bytes.
-"""
-
 from __future__ import annotations
 
 import asyncio

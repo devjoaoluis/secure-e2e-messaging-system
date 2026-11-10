@@ -1,17 +1,3 @@
-"""Gerenciamento de sessão de peers do lado do cliente, derivação de chaves HKDF, rastreamento de IV e estado anti-replay.
-
-Mantém o dicionário `peers` mapeando cada `client_id` (16 bytes) do peer para o seu
-estado de sessão criptográfica:
-- Chaves direcionais AES-128-GCM (`key_send`, `key_recv`)
-- Bases de IV direcionais de 4 bytes (`iv_base_send`, `iv_base_recv`)
-- Contadores de sequência monotónicos de 64 bits (`seq_send`, `seq_recv`)
-
-Garante:
-- Números de sequência estritamente monotónicos (`seq_no > seq_recv`) para evitar ataques de repetição (replay)
-- Verificação de tag antes de comitar atualizações de estado (`seq_recv`) para evitar DoS por pacotes forjados
-- Modelo de memória transitória: zeroiza e descarta todas as chaves dos peers ao desconectar
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

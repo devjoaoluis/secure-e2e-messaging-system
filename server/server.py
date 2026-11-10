@@ -1,11 +1,3 @@
-"""Servidor relay TCP assíncrono multi-cliente (server/server.py).
-
-Implementa:
-- Gerenciamento concorrente de sockets TCP multi-cliente usando `asyncio`
-- Handshake autenticado via RSA-PSS (SHA-256) usando `certs/server.crt` e `certs/server.key`
-- Broadcast de troca de chaves distribuindo chaves públicas efêmeras X25519 de peers ativos
-"""
-
 from __future__ import annotations
 
 import argparse
