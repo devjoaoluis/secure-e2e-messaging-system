@@ -1,1 +1,1 @@
-"""E2E secure messaging relay server package."""
+"""Pacote do servidor relay de mensageria segura E2E."""

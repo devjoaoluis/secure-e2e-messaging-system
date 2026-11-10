@@ -1,4 +1,4 @@
-"""Unit tests for Developer 1 Task 2: Server SessionStore & Routing Table (tests/test_session_store.py)."""
+"""Testes unitários para a Tarefa 2 do Developer 1: SessionStore e Tabela de Roteamento no Servidor (tests/test_session_store.py)."""
 
 import pytest
 
@@ -41,12 +41,12 @@ def test_reconnect_same_client_id_evicts_previous_session_and_resets_counters():
     store.record_relayed_frame(id_a, id_b, seq_no=1)
     store.record_relayed_frame(id_b, id_a, seq_no=5)
 
-    # Reconnect under id_a with new ephemeral key pk_a2
+    # Reconecta com o mesmo id_a e uma nova chave efêmera pk_a2
     sess_a2, evicted = store.register_session(id_a, pk_a2)
     assert evicted is sess_a1
     assert sess_a2.pk_client == pk_a2
     assert sess_a2.frames_sent == 0
-    # Directional counter from B -> A must also be reset for the new session
+    # O contador direcional de B -> A também deve ser redefinido para a nova sessão
     assert id_a not in store.get_session(id_b).seq_counters
 
 

@@ -1,12 +1,12 @@
-"""Sequence Counter Anti-Replay Attack Simulation & Session State Tests (tests/test_replay.py).
+"""Testes de Simulação de Ataque de Repetição (Anti-Replay) e Estado de Sessão (tests/test_replay.py).
 
-Validates:
-1. Monotonic sequence counter progression between peers.
-2. Immediate rejection of replayed frames (identical seq_no).
-3. Immediate rejection of delayed/decreased sequence numbers (seq_no < seq_recv).
-4. Protection against unauthenticated seq_recv desynchronization (forged high seq_no frame
-   does not advance seq_recv).
-5. Transient memory zeroization upon disconnect.
+Valida:
+1. Progressão monotónica do contador de sequência entre peers.
+2. Rejeição imediata de frames repetidos (seq_no idêntico).
+3. Rejeição imediata de números de sequência atrasados/menores (seq_no < seq_recv).
+4. Proteção contra dessincronização de seq_recv não autenticada (um frame forjado com seq_no alto
+   não avança seq_recv).
+5. Zeroização de memória transitória ao desconectar.
 """
 
 import os
@@ -50,7 +50,7 @@ def test_bidirectional_e2e_session_and_monotonic_counters():
     assert pt2 == b"Message 2 from Alice"
     assert bob.get_peer(alice.client_id).seq_recv == 2
 
-    # Bob replies to Alice (independent directional counter)
+    # Bob responde para Alice (contador direcional independente)
     reply = bob.encrypt_message(alice.client_id, b"Reply 1 from Bob")
     assert reply.seq_no == 1
     sender_b, pt_b = alice.decrypt_frame(reply.pack())
@@ -63,11 +63,11 @@ def test_duplicate_frame_replay_attack_rejected():
 
     captured_frame = alice.encrypt_message(bob.client_id, b"Transfer $500").pack()
 
-    # First delivery succeeds
+    # Primeira entrega é bem-sucedida
     _, plaintext = bob.decrypt_frame(captured_frame)
     assert plaintext == b"Transfer $500"
 
-    # Attacker replays the exact same captured frame -> rejected with ReplayAttackError
+    # Atacante reproduz o exato mesmo frame capturado -> rejeitado com ReplayAttackError
     with pytest.raises(ReplayAttackError, match="Replay detected"):
         bob.decrypt_frame(captured_frame)
 
@@ -79,12 +79,12 @@ def test_decreased_sequence_number_replay_rejected():
     frame_seq_2 = alice.encrypt_message(bob.client_id, b"Second packet").pack()
     frame_seq_3 = alice.encrypt_message(bob.client_id, b"Third packet").pack()
 
-    # Bob receives seq_no=1 and seq_no=3
+    # Bob recebe seq_no=1 e seq_no=3
     bob.decrypt_frame(frame_seq_1)
     bob.decrypt_frame(frame_seq_3)
     assert bob.get_peer(alice.client_id).seq_recv == 3
 
-    # Attacker injects older captured frame with seq_no=2 -> rejected!
+    # Atacante injeta frame capturado mais antigo com seq_no=2 -> rejeitado!
     with pytest.raises(ReplayAttackError, match="Replay detected"):
         bob.decrypt_frame(frame_seq_2)
 
@@ -96,7 +96,7 @@ def test_forged_high_seq_frame_does_not_advance_seq_recv():
     bob.decrypt_frame(valid_1)
     assert bob.get_peer(alice.client_id).seq_recv == 1
 
-    # Attacker crafts a frame with seq_no=500 but invalid tag
+    # Atacante forja um frame com seq_no=500 mas tag inválida
     valid_2 = alice.encrypt_message(bob.client_id, b"Hello 2")
     forged_nonce = valid_2.iv_base + (500).to_bytes(8, "big")
     forged_frame = E2EFrame(
@@ -111,7 +111,7 @@ def test_forged_high_seq_frame_does_not_advance_seq_recv():
     with pytest.raises(InvalidTag):
         bob.decrypt_frame(forged_frame)
 
-    # Bob's seq_recv must still be 1 so valid_2 (seq_no=2) is still accepted!
+    # O seq_recv de Bob deve permanecer em 1 para que valid_2 (seq_no=2) ainda seja aceito!
     assert bob.get_peer(alice.client_id).seq_recv == 1
     _, pt2 = bob.decrypt_frame(valid_2)
     assert pt2 == b"Hello 2"
@@ -126,7 +126,7 @@ def test_recipient_mismatch_and_transient_memory_clear():
     with pytest.raises(RecipientMismatchError):
         charlie.decrypt_frame(frame_for_bob)
 
-    # Verify transient memory wipe on disconnect
+    # Verifica a limpeza de memória transitória ao desconectar
     bob_peer_ref = alice.get_peer(bob.client_id)
     old_pk = alice.pk_client
     alice.clear(rotate_ephemeral_keys=True)

@@ -1,4 +1,4 @@
-"""Unit tests for Developer 1 Task 3: Concurrent Multi-Client TCP Server & Key Broadcast."""
+"""Testes unitários para a Tarefa 3 do Developer 1: Servidor TCP Concorrente Multi-Cliente e Broadcast de Chaves."""
 
 import asyncio
 
@@ -28,12 +28,12 @@ def test_concurrent_multi_client_handshakes_and_key_broadcast():
         ]
 
         try:
-            # Connect all 4 clients concurrently
+            # Conecta todos os 4 clientes concorrentemente
             await asyncio.gather(*(c.connect_and_handshake() for c in clients))
             for c in clients:
                 c.start_background_receiver()
 
-            # Wait for all 4 clients to receive each other's public keys (3 peers each)
+            # Aguarda todos os 4 clientes receberem as chaves públicas uns dos outros (3 peers cada)
             for _ in range(30):
                 if all(len(c.session.peers) == 3 for c in clients):
                     break

@@ -1,4 +1,4 @@
-"""Unit tests for Task 2: ECDH shared secret and HKDF-SHA256 key derivation."""
+"""Testes unitários para a Tarefa 2: Segredo compartilhado ECDH e derivação de chaves HKDF-SHA256."""
 
 import os
 
@@ -41,15 +41,15 @@ def test_hkdf_extract_and_expand_labels_and_zeroization():
 
     key_a2b, key_b2a = derive_directional_keys(z_ab, salt)
 
-    # Z_AB bytearray must be zeroized immediately after derivation
+    # O bytearray Z_AB deve ser zeroizado imediatamente após a derivação
     assert z_ab == bytearray(X25519_KEY_SIZE)
 
-    # Keys must be 16 bytes (AES-128) and distinct for A2B vs B2A
+    # As chaves devem ter 16 bytes (AES-128) e ser distintas entre A2B e B2A
     assert len(key_a2b) == AES_KEY_SIZE
     assert len(key_b2a) == AES_KEY_SIZE
     assert key_a2b != key_b2a
 
-    # Verify against explicit HKDF-Extract + HKDF-Expand steps
+    # Verifica contra as etapas explícitas de HKDF-Extract + HKDF-Expand
     prk = hkdf_extract(salt, z_copy)
     assert hkdf_expand(prk, b"A2B", 16) == key_a2b
     assert hkdf_expand(prk, b"B2A", 16) == key_b2a
@@ -69,7 +69,7 @@ def test_derive_e2e_session_keys_matching_directions():
 
     assert keys_a.key_a2b == keys_b.key_a2b
     assert keys_a.key_b2a == keys_b.key_b2a
-    # Alice's send key must equal Bob's receive key and vice-versa
+    # A chave de envio de Alice deve ser igual à chave de recepção de Bob e vice-versa
     assert keys_a.key_send == keys_b.key_recv
     assert keys_b.key_send == keys_a.key_recv
     assert keys_a.iv_base_send == keys_b.iv_base_recv

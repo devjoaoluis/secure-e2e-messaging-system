@@ -1,13 +1,13 @@
-"""End-to-End Client & Security Policy Tests (tests/test_client_e2e.py).
+"""Testes de Cliente Ponta-a-Ponta e Políticas de Segurança (tests/test_client_e2e.py).
 
-Validates:
-1. Full async handshake (ClientHello -> ServerHello with pinned X.509 cert & RSA-PSS).
-2. Automatic peer key exchange broadcast & HKDF session establishment between Alice and Bob.
-3. Bidirectional AES-128-GCM encrypted messaging over TCP relay.
-4. Active tampering (bitflip) and replay rejection in the live client receive loop.
-5. Strict log sanitization policy (private keys, shared secrets, symmetric keys, nonces,
-   and raw plaintexts are never written to logs).
-6. Transient memory cleanup on disconnect.
+Valida:
+1. Handshake assíncrono completo (ClientHello -> ServerHello com certificado X.509 fixado e RSA-PSS).
+2. Broadcast automático de troca de chaves de peers e estabelecimento de sessão HKDF entre Alice e Bob.
+3. Troca de mensagens cifradas bidirecionais com AES-128-GCM sobre o relay TCP.
+4. Rejeição ativa de adulteração (bitflip) e repetição (replay) no loop de recepção do cliente.
+5. Política estrita de sanitização de logs (chaves privadas, segredos compartilhados, chaves simétricas,
+   nonces e textos claros nunca são gravados em logs).
+6. Limpeza de memória transitória ao desconectar.
 """
 
 import asyncio
@@ -57,7 +57,7 @@ def _generate_server_credentials() -> tuple[rsa.RSAPrivateKey, bytes]:
 
 
 class _MockRelayServer:
-    """Minimal zero-knowledge TCP relay for testing Developer 2's client end-to-end."""
+    """Relay TCP zero-knowledge mínimo para testar o cliente do Developer 2 ponta-a-ponta."""
 
     def __init__(self, rsa_sk: rsa.RSAPrivateKey, cert_pem: bytes) -> None:
         self.rsa_sk = rsa_sk
@@ -101,7 +101,7 @@ class _MockRelayServer:
             )
             await write_tcp_frame(writer, sh.pack())
 
-            # Broadcast existing peers to newcomer, and newcomer to existing peers
+            # Faz broadcast dos peers existentes para o novo cliente, e do novo cliente para os existentes
             for existing_id, (existing_pk, existing_writer) in list(self.clients.items()):
                 await write_tcp_frame(
                     writer,
@@ -166,7 +166,7 @@ def test_full_client_e2e_handshake_messaging_and_log_sanitization(caplog):
             await bob.connect_and_handshake()
             bob.start_background_receiver()
 
-            # Wait briefly for peer key announcements to arrive
+            # Aguarda brevemente a chegada dos anúncios de chaves públicas dos peers
             for _ in range(20):
                 if bob.client_id in alice.session.peers and alice.client_id in bob.session.peers:
                     break
@@ -189,7 +189,7 @@ def test_full_client_e2e_handshake_messaging_and_log_sanitization(caplog):
             assert bob_received == [(alice.client_id, secret_msg_a.encode("utf-8"))]
             assert alice_received == [(bob.client_id, secret_msg_b.encode("utf-8"))]
 
-            # Audit logs: verify neither plaintexts, symmetric keys, nor nonces appear in logs
+            # Auditoria de logs: verifica que nem plaintexts, nem chaves simétricas, nem nonces aparecem nos logs
             peer_state = alice.session.get_peer(bob.client_id)
             key_send_hex = bytes(peer_state.key_send).hex()
             key_recv_hex = bytes(peer_state.key_recv).hex()
@@ -206,7 +206,7 @@ def test_full_client_e2e_handshake_messaging_and_log_sanitization(caplog):
             await bob.close()
             await relay.stop()
 
-        # Verify transient memory model after close()
+        # Verifica o modelo de memória transitória após close()
         assert len(alice.session.peers) == 0
         assert len(bob.session.peers) == 0
 

@@ -1,14 +1,14 @@
-"""Multi-Client E2E Secure Messaging Client & Interactive CLI (client/client.py).
+"""Cliente de Mensageria Segura E2E Multi-Cliente & CLI Interativa (client/client.py).
 
-Implements the client-side protocol flow defined in docs/context.md:
-1. Ephemeral X25519 key generation at startup (`SessionManager`).
-2. TCP connection & Client Registration (`client_id + pk_client`).
-3. Server Proof verification: validates pinned `server.crt` and RSA-PSS signature over
+Implementa o fluxo de protocolo do cliente definido em docs/context.md:
+1. Geração de chaves efêmeras X25519 na inicialização (`SessionManager`).
+2. Conexão TCP e Registro do Cliente (`client_id + pk_client`).
+3. Verificação de prova do servidor: valida o `server.crt` fixado (pinned) e a assinatura RSA-PSS sobre
    H = SHA256(pk_server || pk_client || client_id || salt).
-4. Peer key exchange reception & HKDF-SHA256 session key derivation.
-5. Asynchronous E2E AES-128-GCM frame encryption/decryption with monotonic anti-replay checks.
-6. Strict log sanitization (no private keys, shared secrets, symmetric keys, nonces, or plaintexts logged)
-   and transient memory cleanup on disconnect.
+4. Recepção de anúncio de chaves públicas de peers e derivação de chaves com HKDF-SHA256.
+5. Cifração e decifração assíncrona de frames E2E com AES-128-GCM e checagens monotónicas anti-replay.
+6. Sanitização estrita de logs (chaves privadas, segredos compartilhados, chaves simétricas, nonces e plaintexts nunca são logados)
+   e limpeza de memória transitória ao desconectar.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ import sys
 from typing import Callable, Optional
 import uuid
 
-# Ensure project root is on sys.path when invoked as `python client/client.py`
+# Garante que a raiz do projeto esteja no sys.path quando executado como `python client/client.py`
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
@@ -60,7 +60,7 @@ MessageCallback = Callable[[bytes, bytes], None]
 
 
 class SecureMessagingClient:
-    """Asynchronous E2E encrypted messaging client."""
+    """Cliente assíncrono de mensageria cifrada ponta-a-ponta (E2E)."""
 
     def __init__(
         self,
@@ -99,12 +99,12 @@ class SecureMessagingClient:
         return self.session.client_id.hex()
 
     async def connect_and_handshake(self) -> None:
-        """Open TCP connection, send ClientHello, and verify ServerHello RSA-PSS proof."""
+        """Abre a conexão TCP, envia ClientHello e valida a prova RSA-PSS do ServerHello."""
         self._reader, self._writer = await asyncio.open_connection(
             self.server_host, self.server_port
         )
         try:
-            # 1) Client Registration: client_id (16B) + pk_client (32B)
+            # 1) Registro do Cliente: client_id (16B) + pk_client (32B)
             hello = ClientHello(
                 client_id=self.session.client_id,
                 pk_client=self.session.pk_client,
@@ -118,7 +118,7 @@ class SecureMessagingClient:
                 self.client_id_hex[:12],
             )
 
-            # 2) Server Proof: pk_S + cert + sig + salt
+            # 2) Prova do Servidor: pk_S + cert + sig + salt
             raw_server_hello = await read_tcp_frame(self._reader)
             server_hello = ServerHello.unpack(raw_server_hello)
 
@@ -146,7 +146,7 @@ class SecureMessagingClient:
             raise
 
     def start_background_receiver(self) -> asyncio.Task[None]:
-        """Start the background task that processes incoming peer keys and E2E frames."""
+        """Inicia a tarefa em segundo plano que processa chaves de peers e frames E2E recebidos."""
         if not self._connected or self._reader is None:
             raise RuntimeError("Client must complete handshake before starting receiver loop.")
         self._recv_task = asyncio.create_task(self._receive_loop())
@@ -170,11 +170,11 @@ class SecureMessagingClient:
             await self.close()
 
     def _handle_incoming_packet(self, raw_packet: bytes) -> None:
-        """Dispatch an incoming framed packet (peer key broadcast, disconnect, or E2E frame)."""
+        """Despacha um pacote enquadrado recebido (anúncio de chave de peer, desconexão ou frame E2E)."""
         if not raw_packet:
             return
 
-        # Case 1: Explicit packet type prefix
+        # Caso 1: Prefixo explícito de tipo de pacote
         first_byte = raw_packet[0]
         peer_base_len = CLIENT_ID_SIZE + X25519_KEY_SIZE
 
@@ -196,13 +196,13 @@ class SecureMessagingClient:
             self._process_e2e_bytes(raw_packet[1:])
             return
 
-        # Case 2: Raw unprefixed PeerKeyAnnouncement (48B or 64B) vs E2EFrame (>= 68B)
+        # Caso 2: PeerKeyAnnouncement bruto sem prefixo (48B ou 64B) vs E2EFrame (>= 68B)
         if len(raw_packet) in (peer_base_len, peer_base_len + SALT_SIZE):
             announcement = PeerKeyAnnouncement.unpack(raw_packet)
             self._register_announced_peer(announcement)
             return
 
-        # Case 3: Raw E2EFrame
+        # Caso 3: E2EFrame bruto
         self._process_e2e_bytes(raw_packet)
 
     def _register_announced_peer(self, announcement: PeerKeyAnnouncement) -> None:
@@ -237,7 +237,7 @@ class SecureMessagingClient:
             logger.warning("Dropped E2E frame: %s", exc)
 
     async def send_message(self, recipient_id: bytes, plaintext: bytes | str) -> E2EFrame:
-        """Encrypt a message for `recipient_id` with AES-128-GCM and transmit over TCP."""
+        """Cifra uma mensagem para `recipient_id` com AES-128-GCM e transmite via TCP."""
         if not self._connected or self._writer is None:
             raise RuntimeError("Client is not connected.")
         payload_bytes = plaintext.encode("utf-8") if isinstance(plaintext, str) else bytes(plaintext)
@@ -255,7 +255,7 @@ class SecureMessagingClient:
         return frame
 
     async def broadcast_message(self, plaintext: bytes | str) -> list[E2EFrame]:
-        """Send an individually encrypted E2E frame to every active peer."""
+        """Envia um frame E2E cifrado individualmente para cada peer ativo."""
         frames: list[E2EFrame] = []
         for peer_id in list(self.session.peers.keys()):
             frame = await self.send_message(peer_id, plaintext)
@@ -263,7 +263,7 @@ class SecureMessagingClient:
         return frames
 
     def resolve_peer_id(self, prefix_or_hex: str) -> bytes:
-        """Resolve a full or prefix hex string to a registered 16-byte peer_id."""
+        """Resolve uma string hexadecimal completa ou em prefixo para um peer_id registrado de 16 bytes."""
         cleaned = prefix_or_hex.strip().lower().replace("-", "")
         matches = [pid for pid in self.session.peers if pid.hex().startswith(cleaned)]
         if not matches:
@@ -273,7 +273,7 @@ class SecureMessagingClient:
         return matches[0]
 
     async def close(self) -> None:
-        """Close the TCP connection and wipe all transient session keys from memory."""
+        """Fecha a conexão TCP e apaga todas as chaves transitórias de sessão da memória."""
         self._connected = False
         if self._recv_task is not None and not self._recv_task.done():
             if self._recv_task is not asyncio.current_task():
@@ -293,7 +293,7 @@ class SecureMessagingClient:
             self._writer = None
         self._reader = None
 
-        # Transient Memory Model: zeroize all keys and clear peer state
+        # Modelo de Memória Transitória: zeroiza todas as chaves e limpa o estado de peers
         self.session.clear(rotate_ephemeral_keys=True)
 
 
@@ -302,7 +302,7 @@ async def run_interactive_cli(
     server_port: int,
     cert_path: str,
 ) -> None:
-    """Run the interactive command-line client."""
+    """Executa a interface de linha de comando interativa do cliente."""
 
     def _print_incoming(sender_id: bytes, plaintext: bytes) -> None:
         text = plaintext.decode("utf-8", errors="replace")
@@ -361,7 +361,7 @@ async def run_interactive_cli(
                 await client.broadcast_message(msg_text)
                 continue
 
-            # Default: broadcast to all connected peers
+            # Padrão: envia como broadcast para todos os peers conectados
             if not client.session.peers:
                 print("No active peers to send message to.")
             else:

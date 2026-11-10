@@ -1,7 +1,7 @@
-"""Framing & Malformed Packet Tests (tests/test_framing.py).
+"""Testes de Enquadramento e Pacotes Malformados (tests/test_framing.py).
 
-Validates 4-byte big-endian TCP framing, E2E frame structural bounds,
-and safe rejection of truncated, oversized, or length-mismatched packets.
+Valida o enquadramento TCP com prefixo de 4 bytes big-endian, limites estruturais de frames E2E
+e a rejeição segura de pacotes truncados, superdimensionados ou com tamanho incompatível.
 """
 
 import asyncio
@@ -33,11 +33,11 @@ def test_tcp_frame_length_mismatch_rejected():
     payload = b"expected_16_byte"
     framed = pack_tcp_frame(payload)
 
-    # Truncated payload (fewer bytes than 4-byte prefix declares)
+    # Payload truncado (menos bytes do que o prefixo de 4 bytes declara)
     with pytest.raises(FramingError, match="TCP framing mismatch"):
         unpack_tcp_frame(framed[:-3])
 
-    # Extra trailing bytes beyond 4-byte prefix declaration
+    # Bytes excedentes além do declarado no prefixo de 4 bytes
     with pytest.raises(FramingError, match="TCP framing mismatch"):
         unpack_tcp_frame(framed + b"extra")
 
@@ -58,7 +58,7 @@ def test_tcp_frame_zero_or_oversized_prefix_rejected():
 def test_async_stream_reader_truncated_frame_raises_framing_error():
     async def _run():
         reader = asyncio.StreamReader()
-        # Declare 50 bytes in 4-byte big-endian prefix, but only feed 10 bytes before EOF
+        # Declara 50 bytes no prefixo big-endian de 4 bytes, mas alimenta apenas 10 bytes antes do EOF
         reader.feed_data(struct.pack("!I", 50) + b"0123456789")
         reader.feed_eof()
 
@@ -74,12 +74,12 @@ def test_e2e_frame_payload_bound_4096_bytes_enforced():
     sender = generate_client_id()
     recipient = generate_client_id()
 
-    # Exact 4096-byte payload succeeds
+    # Payload exato de 4096 bytes é aceito com sucesso
     max_msg = b"A" * MAX_PLAINTEXT_SIZE
     frame = create_encrypted_frame(key, iv_base, sender, recipient, 1, max_msg)
     assert len(E2EFrame.unpack(frame.pack()).ciphertext) == MAX_PLAINTEXT_SIZE
 
-    # 4097-byte payload is rejected
+    # Payload de 4097 bytes é rejeitado
     oversized_msg = b"A" * (MAX_PLAINTEXT_SIZE + 1)
     with pytest.raises(FramingError, match="exceeds maximum bound"):
         create_encrypted_frame(key, iv_base, sender, recipient, 2, oversized_msg)

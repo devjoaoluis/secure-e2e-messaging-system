@@ -1,15 +1,15 @@
-"""Protocol framing, serialization, and packet pack/unpack utilities.
+"""Utilitários de enquadramento de protocolo, serialização e empacotamento.
 
-Specifications from docs/context.md:
-- TCP Framing: 4-byte big-endian length prefix (!I) + raw payload.
-- E2E Encrypted Application Frame:
+Especificações de docs/context.md:
+- Enquadramento TCP: Prefixo de tamanho de 4 bytes em formato big-endian (!I) + payload bruto.
+- Frame de Aplicação Cifrado E2E:
   +-------------+----------------+------------------+--------------+-------------------+---------------+
   | Nonce (12B) | sender_id (16B)| recipient_id(16B)| seq_no (8B)  | Ciphertext (var)  | Tag (16B)     |
   +-------------+----------------+------------------+--------------+-------------------+---------------+
   |<----------------------------- AAD ---------------------------->|
-  * Nonce Construction (12 bytes): IV_base (4B) || seq_no (8B, big-endian).
-  * Associated Data (AAD): sender_id (16B) || recipient_id (16B) || seq_no (8B).
-  * Payload Bound: Maximum plaintext size per message is 4096 bytes.
+  * Construção do Nonce (12 bytes): IV_base (4B) || seq_no (8B, big-endian).
+  * Dados Associados (AAD): sender_id (16B) || recipient_id (16B) || seq_no (8B).
+  * Limite do Payload: Tamanho máximo de texto claro por mensagem é 4096 bytes.
 """
 
 from __future__ import annotations
@@ -44,11 +44,11 @@ MAX_TCP_FRAME_SIZE = 65536
 
 
 class FramingError(Exception):
-    """Raised when a TCP or E2E frame violates length or structural constraints."""
+    """Lançada quando um frame TCP ou E2E viola restrições de tamanho ou estrutura."""
 
 
 class PacketType(IntEnum):
-    """Control and data packet types for client-server protocol orchestration."""
+    """Tipos de pacotes de controle e dados para a orquestração do protocolo cliente-servidor."""
 
     CLIENT_HELLO = 0x01
     SERVER_HELLO = 0x02
@@ -59,7 +59,7 @@ class PacketType(IntEnum):
 
 @dataclass(frozen=True)
 class E2EFrame:
-    """Represents a serialized E2E Encrypted Application Frame."""
+    """Representa um Frame de Aplicação Cifrado E2E serializado."""
 
     nonce: bytes
     sender_id: bytes
@@ -70,16 +70,16 @@ class E2EFrame:
 
     @property
     def aad(self) -> bytes:
-        """Return the 40-byte Associated Data: sender_id (16B) || recipient_id (16B) || seq_no (8B)."""
+        """Retorna os 40 bytes de Dados Associados: sender_id (16B) || recipient_id (16B) || seq_no (8B)."""
         return build_aad(self.sender_id, self.recipient_id, self.seq_no)
 
     @property
     def iv_base(self) -> bytes:
-        """Extract the 4-byte IV_base prefix from the 12-byte nonce."""
+        """Extrai o prefixo IV_base de 4 bytes a partir do nonce de 12 bytes."""
         return self.nonce[:IV_BASE_SIZE]
 
     def validate(self) -> None:
-        """Validate all field sizes and bounds."""
+        """Valida os tamanhos de todos os campos e limites estruturais."""
         if len(self.nonce) != NONCE_SIZE:
             raise FramingError(f"Invalid nonce length: {len(self.nonce)} (expected {NONCE_SIZE}).")
         if len(self.sender_id) != CLIENT_ID_SIZE:
@@ -100,7 +100,7 @@ class E2EFrame:
             )
 
     def pack(self) -> bytes:
-        """Serialize the E2E frame into raw wire bytes:
+        """Serializa o frame E2E nos bytes brutos da rede:
         Nonce (12B) || sender_id (16B) || recipient_id (16B) || seq_no (8B) || Ciphertext || Tag (16B).
         """
         self.validate()
@@ -115,7 +115,7 @@ class E2EFrame:
 
     @classmethod
     def unpack(cls, raw_bytes: bytes) -> E2EFrame:
-        """Deserialize raw wire bytes into an E2EFrame instance."""
+        """Desserializa bytes brutos da rede em uma instância de E2EFrame."""
         if not isinstance(raw_bytes, (bytes, bytearray, memoryview)):
             raise FramingError("E2E frame input must be bytes-like.")
         data = bytes(raw_bytes)
@@ -154,7 +154,7 @@ def create_encrypted_frame(
     seq_no: int,
     plaintext: bytes,
 ) -> E2EFrame:
-    """Build nonce and AAD, encrypt plaintext with AES-128-GCM, and return an E2EFrame."""
+    """Constrói o nonce e AAD, cifra o plaintext com AES-128-GCM e retorna um E2EFrame."""
     if len(plaintext) > MAX_PLAINTEXT_SIZE:
         raise FramingError(
             f"Plaintext size ({len(plaintext)} B) exceeds maximum bound ({MAX_PLAINTEXT_SIZE} B)."
@@ -177,11 +177,11 @@ def decrypt_e2e_frame(
     key: bytes,
     expected_iv_base: bytes | None = None,
 ) -> bytes:
-    """Validate frame structure/nonce consistency and decrypt with AES-128-GCM.
+    """Valida a estrutura do frame, a consistência do nonce e decifra com AES-128-GCM.
 
-    Raises:
-        FramingError: If the frame structure or nonce construction is malformed.
-        InvalidTag: If the ciphertext, AAD, or authentication tag was tampered with.
+    Lança:
+        FramingError: Se a estrutura do frame ou a construção do nonce estiverem malformadas.
+        InvalidTag: Se o ciphertext, AAD ou tag de autenticação tiverem sido adulterados.
     """
     frame.validate()
     nonce_seq = struct.unpack("!Q", frame.nonce[IV_BASE_SIZE:])[0]
@@ -202,12 +202,12 @@ def decrypt_e2e_frame(
 
 
 # ---------------------------------------------------------------------------
-# TCP Length-Prefix Framing (4-byte big-endian)
+# Enquadramento TCP com Prefixo de Tamanho (4 bytes big-endian)
 # ---------------------------------------------------------------------------
 
 
 def pack_tcp_frame(payload: bytes, max_size: int = MAX_TCP_FRAME_SIZE) -> bytes:
-    """Prepend a 4-byte big-endian length prefix to a raw frame payload."""
+    """Adiciona um prefixo de tamanho de 4 bytes big-endian a um payload bruto."""
     if not isinstance(payload, (bytes, bytearray, memoryview)):
         raise TypeError("Payload must be bytes-like.")
     raw = bytes(payload)
@@ -222,7 +222,7 @@ def pack_tcp_frame(payload: bytes, max_size: int = MAX_TCP_FRAME_SIZE) -> bytes:
 
 
 def unpack_tcp_frame(tcp_packet: bytes, max_size: int = MAX_TCP_FRAME_SIZE) -> bytes:
-    """Unpack and validate a single length-prefixed TCP packet from raw bytes."""
+    """Desempacota e valida um único pacote TCP com prefixo de tamanho a partir de bytes brutos."""
     if not isinstance(tcp_packet, (bytes, bytearray, memoryview)):
         raise FramingError("TCP packet must be bytes-like.")
     data = bytes(tcp_packet)
@@ -249,11 +249,11 @@ async def read_tcp_frame(
     reader: asyncio.StreamReader,
     max_size: int = MAX_TCP_FRAME_SIZE,
 ) -> bytes:
-    """Read a length-prefixed frame from an asyncio StreamReader.
+    """Lê um frame com prefixo de tamanho a partir de um asyncio StreamReader.
 
-    Raises:
-        EOFError: If the stream closes cleanly before reading a frame.
-        FramingError: If the length prefix is invalid or stream truncates mid-frame.
+    Lança:
+        EOFError: Se a conexão for fechada de forma limpa pelo peer antes de ler um frame.
+        FramingError: Se o prefixo de tamanho for inválido ou a conexão for truncada durante a leitura.
     """
     try:
         prefix = await reader.readexactly(TCP_LEN_PREFIX_SIZE)
@@ -287,20 +287,20 @@ async def write_tcp_frame(
     payload: bytes,
     max_size: int = MAX_TCP_FRAME_SIZE,
 ) -> None:
-    """Write a 4-byte length-prefixed frame to an asyncio StreamWriter."""
+    """Escreve um frame com prefixo de tamanho de 4 bytes em um asyncio StreamWriter."""
     framed = pack_tcp_frame(payload, max_size=max_size)
     writer.write(framed)
     await writer.drain()
 
 
 # ---------------------------------------------------------------------------
-# Handshake & Control Message Serialization
+# Serialização de Mensagens de Handshake e Controle
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class ClientHello:
-    """Step 1: Client registration payload (client_id + pk_client)."""
+    """Passo 1: Payload de registro do cliente (client_id + pk_client)."""
 
     client_id: bytes
     pk_client: bytes
@@ -330,7 +330,7 @@ class ClientHello:
 
 @dataclass(frozen=True)
 class ServerHello:
-    """Step 2: Server handshake proof (pk_server + cert + sig + salt)."""
+    """Passo 2: Prova de handshake do servidor (pk_server + cert + sig + salt)."""
 
     pk_server: bytes
     salt: bytes
@@ -357,7 +357,7 @@ class ServerHello:
     def unpack(cls, data: bytes) -> ServerHello:
         raw = bytes(data)
         if raw and raw[0] == PacketType.SERVER_HELLO:
-            # Verify whether byte 0 is a type tag
+            # Verifica se o byte 0 é uma tag de tipo
             candidate = raw[1:]
             if len(candidate) >= X25519_KEY_SIZE + SALT_SIZE + 8:
                 c_len, s_len = struct.unpack(
@@ -391,7 +391,7 @@ class ServerHello:
 
 @dataclass(frozen=True)
 class PeerKeyAnnouncement:
-    """Step 5/6: Server broadcasts a peer's client_id and ephemeral public key (pk_client)."""
+    """Passo 5/6: Servidor anuncia o client_id e a chave pública efêmera (pk_client) de um peer."""
 
     peer_id: bytes
     pk_peer: bytes

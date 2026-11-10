@@ -1,1 +1,1 @@
-"""Common cryptographic primitives and protocol definitions."""
+"""Primitivas criptográficas comuns e definições do protocolo."""

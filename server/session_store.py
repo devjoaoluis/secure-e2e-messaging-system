@@ -1,17 +1,17 @@
-"""Server-side active client session storage and routing table (server/session_store.py).
+"""Armazenamento de sessões ativas de clientes e tabela de roteamento no servidor (server/session_store.py).
 
-Maintains the `sessions` dictionary mapping each active `client_id` (16B) to its
-`ClientSession` metadata:
-- `client_id` (16B UUIDv4)
-- `pk_client` (32B ephemeral X25519 public key)
-- `salt_srv` (16B random server salt)
-- Routing counters (`frames_sent`, `frames_received`) and sequence counters (`seq_counters`)
-- Associated `asyncio.StreamWriter`
+Mantém o dicionário `sessions` mapeando cada `client_id` (16B) ativo para os seus
+metadados de `ClientSession`:
+- `client_id` (UUIDv4 de 16B)
+- `pk_client` (chave pública efêmera X25519 de 32B)
+- `salt_srv` (salt aleatório de 16B do servidor)
+- Contadores de roteamento (`frames_sent`, `frames_received`) e contadores de sequência (`seq_counters`)
+- `asyncio.StreamWriter` associado
 
-Enforces the Transient Memory Model:
-- Disconnection clears all session state for the client from memory.
-- Reconnecting under an existing `client_id` evicts the prior session and enforces
-  a full re-handshake and key renegotiation.
+Aplica o Modelo de Memória Transitória:
+- A desconexão limpa todo o estado de sessão do cliente da memória.
+- Reconectar com um `client_id` existente descarta a sessão anterior e força
+  um novo handshake completo e renegociação de chaves.
 """
 
 from __future__ import annotations
@@ -30,16 +30,16 @@ from common.crypto import (
 
 
 class ServerSessionError(Exception):
-    """Base exception for server session store errors."""
+    """Exceção base para erros do armazenamento de sessões do servidor."""
 
 
 class ServerReplayOrSequenceError(ServerSessionError):
-    """Raised when the relay detects a non-monotonic sequence number for a (sender, recipient) pair."""
+    """Lançada quando o relay detecta um número de sequência não monotónico para o par (remetente, destinatário)."""
 
 
 @dataclass
 class ClientSession:
-    """Represents an active client registered with the relay server."""
+    """Representa um cliente ativo registrado no servidor relay."""
 
     client_id: bytes
     pk_client: bytes
@@ -51,14 +51,14 @@ class ClientSession:
     seq_counters: Dict[bytes, int] = field(default_factory=dict)
 
     def clear(self) -> None:
-        """Clear transient counters and references on disconnect."""
+        """Limpa contadores transitórios e referências ao desconectar."""
         self.seq_counters.clear()
         self.frames_sent = 0
         self.frames_received = 0
         self.writer = None
 
     def __repr__(self) -> str:
-        """Sanitized representation that never logs raw keys or secrets."""
+        """Representação sanitizada que nunca loga chaves brutas ou segredos."""
         return (
             f"ClientSession(client_id={self.client_id.hex()[:12]}..., "
             f"frames_sent={self.frames_sent}, frames_received={self.frames_received})"
@@ -66,7 +66,7 @@ class ClientSession:
 
 
 class SessionStore:
-    """In-memory store for active client sessions and E2E frame routing tables."""
+    """Armazenamento em memória para sessões ativas de clientes e tabelas de roteamento de frames E2E."""
 
     def __init__(self, salt_srv: bytes | None = None) -> None:
         if salt_srv is not None:
@@ -86,16 +86,16 @@ class SessionStore:
         peername: tuple[str, int] | None = None,
         salt_srv: bytes | None = None,
     ) -> tuple[ClientSession, ClientSession | None]:
-        """Register or replace a client session in `self.sessions`.
+        """Registra ou substitui uma sessão de cliente em `self.sessions`.
 
-        Returns:
-            A tuple of (new_session, evicted_previous_session_or_None).
+        Retorna:
+            Uma tupla de (nova_sessao, sessao_anterior_despejada_ou_None).
         """
         if len(client_id) != CLIENT_ID_SIZE:
             raise ValueError(f"client_id must be {CLIENT_ID_SIZE} bytes.")
         if len(pk_client) != X25519_KEY_SIZE:
             raise ValueError(f"pk_client must be {X25519_KEY_SIZE} bytes.")
-        # Validate that pk_client is a well-formed X25519 public key
+        # Valida se pk_client é uma chave pública X25519 bem formada
         load_x25519_public_key(pk_client)
 
         effective_salt = bytes(salt_srv) if salt_srv is not None else self.salt_srv
@@ -105,7 +105,7 @@ class SessionStore:
         evicted = self.sessions.pop(bytes(client_id), None)
         if evicted is not None:
             evicted.clear()
-            # Also reset directional seq_counters referencing the reconnected client in other sessions
+            # Também redefine os seq_counters direcionais que referenciam o cliente reconectado em outras sessões
             for other in self.sessions.values():
                 other.seq_counters.pop(bytes(client_id), None)
 
@@ -120,11 +120,11 @@ class SessionStore:
         return session, evicted
 
     def get_session(self, client_id: bytes) -> ClientSession | None:
-        """Look up an active session by its 16-byte client_id."""
+        """Busca uma sessão ativa pelo seu client_id de 16 bytes."""
         return self.sessions.get(bytes(client_id))
 
     def get_other_sessions(self, exclude_client_id: bytes) -> list[ClientSession]:
-        """Return all active sessions except `exclude_client_id`."""
+        """Retorna todas as sessões ativas exceto `exclude_client_id`."""
         target = bytes(exclude_client_id)
         return [s for cid, s in self.sessions.items() if cid != target]
 
@@ -133,10 +133,10 @@ class SessionStore:
         client_id: bytes,
         expected_session: ClientSession | None = None,
     ) -> ClientSession | None:
-        """Remove a client session from memory and wipe its transient counters.
+        """Remove uma sessão de cliente da memória e limpa seus contadores transitórios.
 
-        If `expected_session` is provided, only removes the entry if it still points
-        to that exact `ClientSession` instance (prevents race conditions on reconnect).
+        Se `expected_session` for fornecido, apenas remove a entrada se ela ainda apontar
+        para aquela instância exata de `ClientSession` (evita condições de corrida na reconexão).
         """
         cid = bytes(client_id)
         current = self.sessions.get(cid)
@@ -158,7 +158,7 @@ class SessionStore:
         seq_no: int,
         enforce_monotonic: bool = True,
     ) -> None:
-        """Update routing counters and track directional sequence numbers."""
+        """Atualiza os contadores de roteamento e rastreia os números de sequência direcionais."""
         sender = self.get_session(sender_id)
         recipient = self.get_session(recipient_id)
         if sender is None:
@@ -177,7 +177,7 @@ class SessionStore:
         recipient.frames_received += 1
 
     def clear(self) -> None:
-        """Clear all active sessions from memory."""
+        """Limpa todas as sessões ativas da memória."""
         for session in self.sessions.values():
             session.clear()
         self.sessions.clear()

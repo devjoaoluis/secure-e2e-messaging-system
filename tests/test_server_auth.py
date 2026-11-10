@@ -1,4 +1,4 @@
-"""Unit tests for Developer 1 Task 1: Server RSA Authentication & Certificate Management."""
+"""Testes unitários para a Tarefa 1 do Developer 1: Autenticação RSA do Servidor e Gestão de Certificados."""
 
 import os
 from pathlib import Path

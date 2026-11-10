@@ -1,4 +1,4 @@
-"""Unit tests for Task 1: Ephemeral X25519 keys and RSA-PSS handshake verification."""
+"""Testes unitários para a Tarefa 1: Chaves efêmeras X25519 e verificação do handshake RSA-PSS."""
 
 from datetime import datetime, timedelta, timezone
 import os
@@ -51,7 +51,7 @@ def test_generate_x25519_ephemeral_keypair():
     assert isinstance(pk1_bytes, bytes)
     assert len(pk1_bytes) == X25519_KEY_SIZE
     assert len(pk2_bytes) == X25519_KEY_SIZE
-    # Ephemeral keys must be distinct per generation
+    # As chaves efêmeras devem ser distintas a cada geração
     assert pk1_bytes != pk2_bytes
 
     loaded_pk = load_x25519_public_key(pk1_bytes)
@@ -100,7 +100,7 @@ def test_server_handshake_detects_tampered_parameters_and_wrong_pinned_cert():
 
     sig = sign_server_handshake(rsa_sk, pk_server, pk_client, client_id, salt)
 
-    # Pinned cert mismatch
+    # Incompatibilidade de certificado fixado (pinned)
     with pytest.raises(CryptoError, match="does not match pinned certificate"):
         verify_server_handshake(
             server_cert_bytes=cert_pem,
@@ -112,7 +112,7 @@ def test_server_handshake_detects_tampered_parameters_and_wrong_pinned_cert():
             signature=sig,
         )
 
-    # Tampered salt
+    # Salt adulterado
     tampered_salt = bytes([salt[0] ^ 0xFF]) + salt[1:]
     with pytest.raises(CryptoError, match="RSA-PSS handshake signature verification failed"):
         verify_server_handshake(
@@ -125,6 +125,6 @@ def test_server_handshake_detects_tampered_parameters_and_wrong_pinned_cert():
             signature=sig,
         )
 
-    # Hash check
+    # Verificação da hash
     h = compute_handshake_hash(pk_server, pk_client, client_id, salt)
     assert len(h) == 32

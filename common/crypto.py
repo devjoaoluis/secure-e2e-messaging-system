@@ -1,11 +1,11 @@
-"""Cryptographic primitives for the Multi-Client E2E Secure Messaging System.
+"""Primitivas criptográficas para o Sistema Multi-Cliente de Mensageria Segura E2E.
 
-Implements:
-- Ephemeral X25519 key generation and serialization (Forward Secrecy / PFS)
-- Server authentication via pinned X.509 certificate and RSA-PSS (SHA-256)
-- ECDH shared secret computation (X25519) with immediate memory zeroization
-- HKDF-SHA256 (HKDF-Extract + HKDF-Expand) directional key derivation (Key_A2B, Key_B2A)
-- AES-128-GCM Authenticated Encryption with Associated Data (AEAD), Nonce & AAD construction
+Implementa:
+- Geração e serialização de chaves efêmeras X25519 (Sigilo Perfeito Para Frente / PFS)
+- Autenticação do servidor via certificado X.509 fixado (pinned) e RSA-PSS (SHA-256)
+- Cálculo de segredo compartilhado ECDH (X25519) com zeroização imediata de memória
+- Derivação direcionada de chaves via HKDF-SHA256 (HKDF-Extract + HKDF-Expand) (Key_A2B, Key_B2A)
+- Cifração autenticada AES-128-GCM com dados associados (AEAD), construção de Nonce e AAD
 """
 
 from __future__ import annotations
@@ -46,12 +46,12 @@ HKDF_INFO_IV_B2A = b"IV_B2A"
 
 
 class CryptoError(Exception):
-    """Base exception for cryptographic validation and operation errors."""
+    """Exceção base para validações e operações criptográficas com erro."""
 
 
 @dataclass(frozen=True)
 class DerivedSessionKeys:
-    """Directional session keys and IV bases derived via ECDH + HKDF-SHA256."""
+    """Chaves direcionais de sessão e bases de IV derivadas via ECDH + HKDF-SHA256."""
 
     key_a2b: bytes
     key_b2a: bytes
@@ -62,21 +62,21 @@ class DerivedSessionKeys:
 
 
 def zeroize(buffer: bytearray) -> None:
-    """Overwrite a mutable bytearray in-place with zeros."""
+    """Sobrescreve um bytearray mutável em memória com zeros."""
     for i in range(len(buffer)):
         buffer[i] = 0
 
 
 def generate_client_id() -> bytes:
-    """Generate a random 16-byte binary client_id (UUIDv4)."""
+    """Gera um client_id binário aleatório de 16 bytes (UUIDv4)."""
     return uuid.uuid4().bytes
 
 
 def generate_x25519_keypair() -> tuple[x25519.X25519PrivateKey, bytes]:
-    """Generate a fresh ephemeral X25519 keypair (sk_client, pk_client_bytes).
+    """Gera um novo par de chaves efêmeras X25519 (sk_client, pk_client_bytes).
 
-    Returns:
-        A tuple of (X25519PrivateKey object, 32-byte raw public key bytes).
+    Retorna:
+        Uma tupla de (objeto X25519PrivateKey, bytes da chave pública bruta de 32 bytes).
     """
     sk_client = x25519.X25519PrivateKey.generate()
     pk_client_bytes = serialize_x25519_public_key(sk_client.public_key())
@@ -84,7 +84,7 @@ def generate_x25519_keypair() -> tuple[x25519.X25519PrivateKey, bytes]:
 
 
 def serialize_x25519_public_key(public_key: x25519.X25519PublicKey) -> bytes:
-    """Serialize an X25519PublicKey into its 32-byte raw representation."""
+    """Serializa uma X25519PublicKey em sua representação bruta de 32 bytes."""
     return public_key.public_bytes(
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
@@ -92,7 +92,7 @@ def serialize_x25519_public_key(public_key: x25519.X25519PublicKey) -> bytes:
 
 
 def load_x25519_public_key(pk_bytes: bytes) -> x25519.X25519PublicKey:
-    """Deserialize and validate a 32-byte raw X25519 public key."""
+    """Desserializa e valida uma chave pública bruta X25519 de 32 bytes."""
     if not isinstance(pk_bytes, (bytes, bytearray, memoryview)):
         raise TypeError("X25519 public key must be bytes-like.")
     raw = bytes(pk_bytes)
@@ -109,7 +109,7 @@ def compute_handshake_transcript(
     client_id: bytes,
     salt: bytes,
 ) -> bytes:
-    """Build the concatenated handshake data: pk_server || pk_client || client_id || salt."""
+    """Constrói os dados concatenados do handshake: pk_server || pk_client || client_id || salt."""
     if len(pk_client) != X25519_KEY_SIZE:
         raise ValueError(f"pk_client must be {X25519_KEY_SIZE} bytes.")
     if len(client_id) != CLIENT_ID_SIZE:
@@ -127,13 +127,13 @@ def compute_handshake_hash(
     client_id: bytes,
     salt: bytes,
 ) -> bytes:
-    """Compute H = SHA256(pk_server || pk_client || client_id || salt)."""
+    """Calcula H = SHA256(pk_server || pk_client || client_id || salt)."""
     transcript = compute_handshake_transcript(pk_server, pk_client, client_id, salt)
     return hashlib.sha256(transcript).digest()
 
 
 def load_x509_certificate(cert_data: bytes) -> x509.Certificate:
-    """Load an X.509 certificate from PEM or DER bytes and enforce RSA >= 2048 bits."""
+    """Carrega um certificado X.509 a partir de bytes PEM ou DER e exige RSA >= 2048 bits."""
     if not cert_data:
         raise CryptoError("Certificate data cannot be empty.")
     try:
@@ -158,7 +158,7 @@ def load_rsa_private_key(
     key_data: bytes,
     password: bytes | None = None,
 ) -> rsa.RSAPrivateKey:
-    """Load an RSA private key from PEM or DER bytes and enforce >= 2048 bits."""
+    """Carrega uma chave privada RSA de bytes PEM ou DER e exige >= 2048 bits."""
     if not key_data:
         raise CryptoError("RSA private key data cannot be empty.")
     try:
@@ -183,10 +183,10 @@ def generate_self_signed_rsa_cert(
     common_name: str = "SecureRelayServer",
     valid_days: int = 365,
 ) -> tuple[rsa.RSAPrivateKey, bytes, bytes]:
-    """Generate an RSA keypair (>= 2048 bits) and a self-signed X.509 certificate.
+    """Gera um par de chaves RSA (>= 2048 bits) e um certificado X.509 autoassinado.
 
-    Returns:
-        A tuple of (RSAPrivateKey, private_key_pem_bytes, certificate_pem_bytes).
+    Retorna:
+        Uma tupla de (RSAPrivateKey, bytes_pem_chave_privada, bytes_pem_certificado).
     """
     if key_size < MIN_RSA_KEY_BITS:
         raise CryptoError(
@@ -222,10 +222,10 @@ def ensure_server_credentials(
     key_size: int = MIN_RSA_KEY_BITS,
     auto_generate: bool = True,
 ) -> tuple[rsa.RSAPrivateKey, bytes]:
-    """Load and validate server RSA private key and X.509 certificate from disk,
-    or generate them if missing and `auto_generate` is True.
+    """Carrega e valida a chave privada RSA e o certificado X.509 do servidor no disco,
+    ou os gera automaticamente se ausentes e `auto_generate` for True.
 
-    Verifies that both key and certificate have >= 2048 bits and share the same modulus/exponent.
+    Verifica se a chave e o certificado têm >= 2048 bits e compartilham o mesmo módulo/expoente.
     """
     c_path = Path(cert_path)
     k_path = Path(key_path)
@@ -262,7 +262,7 @@ def sign_server_handshake(
     client_id: bytes,
     salt: bytes,
 ) -> bytes:
-    """Sign handshake parameters using RSA-PSS with SHA-256:
+    """Assina os parâmetros do handshake usando RSA-PSS com SHA-256:
     H = SHA256(pk_server || pk_client || client_id || salt).
     """
     if rsa_private_key.key_size < MIN_RSA_KEY_BITS:
@@ -287,10 +287,10 @@ def verify_server_handshake(
     salt: bytes,
     signature: bytes,
 ) -> bool:
-    """Validate the server's pinned X.509 certificate and verify its RSA-PSS signature over H.
+    """Valida o certificado X.509 fixado (pinned) do servidor e verifica a assinatura RSA-PSS sobre H.
 
-    Raises:
-        CryptoError: If certificate pinning, validity, or signature verification fails.
+    Lança:
+        CryptoError: Se o pinning do certificado, a validade ou a verificação da assinatura falharem.
     """
     server_cert = load_x509_certificate(server_cert_bytes)
 
@@ -311,8 +311,8 @@ def verify_server_handshake(
     transcript = compute_handshake_transcript(pk_server, pk_client, client_id, salt)
     digest = hashlib.sha256(transcript).digest()
 
-    # Support both Prehashed(SHA256) on H and standard SHA256 over transcript,
-    # as well as PSS.MAX_LENGTH and PSS.AUTO salt lengths for interoperability.
+    # Suporta tanto Prehashed(SHA256) em H quanto SHA256 padrão sobre o transcript,
+    # bem como comprimentos de salt PSS.MAX_LENGTH e PSS.AUTO para interoperabilidade.
     for salt_len in (padding.PSS.MAX_LENGTH, padding.PSS.AUTO):
         pss_pad = padding.PSS(
             mgf=padding.MGF1(hashes.SHA256()),
@@ -347,9 +347,9 @@ def compute_shared_secret(
     sk_local: x25519.X25519PrivateKey,
     pk_peer: bytes | x25519.X25519PublicKey,
 ) -> bytearray:
-    """Compute the X25519 ECDH shared secret Z_AB = ECDH(sk_A, pk_B).
+    """Calcula o segredo compartilhado ECDH X25519 Z_AB = ECDH(sk_A, pk_B).
 
-    Returns a mutable bytearray so the caller can zeroize it immediately afterHKDF.
+    Retorna um bytearray mutável para que o chamador possa zeroizá-lo imediatamente após o HKDF.
     """
     if isinstance(pk_peer, (bytes, bytearray, memoryview)):
         peer_pub = load_x25519_public_key(bytes(pk_peer))
@@ -365,7 +365,7 @@ def compute_shared_secret(
 
 
 def hkdf_extract(salt: bytes, ikm: bytes | bytearray) -> bytearray:
-    """Perform RFC 5869 HKDF-Extract(salt, IKM) using HMAC-SHA256.
+    """Executa o RFC 5869 HKDF-Extract(salt, IKM) usando HMAC-SHA256.
 
     PRK = HMAC-SHA256(salt, Z_AB)
     """
@@ -382,7 +382,7 @@ def hkdf_expand(
     info: bytes,
     length: int = AES_KEY_SIZE,
 ) -> bytes:
-    """Perform RFC 5869 HKDF-Expand(PRK, info, L) using SHA-256."""
+    """Executa o RFC 5869 HKDF-Expand(PRK, info, L) usando SHA-256."""
     if not prk:
         raise ValueError("PRK cannot be empty.")
     kdf = HKDFExpand(
@@ -397,14 +397,14 @@ def derive_directional_keys(
     shared_secret: bytes | bytearray,
     salt: bytes,
 ) -> tuple[bytes, bytes]:
-    """Derive directional AES-128 keys (Key_A2B, Key_B2A) from shared secret Z_AB and salt.
+    """Deriva chaves direcionais AES-128 (Key_A2B, Key_B2A) a partir do segredo compartilhado Z_AB e salt.
 
-    Formula:
+    Fórmula:
         PRK = HKDF-Extract(salt_srv, Z_AB)
         Key_A2B = HKDF-Expand(PRK, info="A2B", L=16)
         Key_B2A = HKDF-Expand(PRK, info="B2A", L=16)
 
-    Automatically zeroizes PRK and shared_secret (if bytearray).
+    Zeroiza automaticamente o PRK e o shared_secret (caso seja bytearray).
     """
     prk = bytearray()
     try:
@@ -427,14 +427,14 @@ def derive_e2e_session_keys(
     peer_id: bytes | None = None,
     is_role_a: bool | None = None,
 ) -> DerivedSessionKeys:
-    """Compute Z_AB = ECDH(sk_local, pk_peer), derive directional keys and IV bases via HKDF-SHA256,
-    and immediately zeroize Z_AB and PRK from memory.
+    """Calcula Z_AB = ECDH(sk_local, pk_peer), deriva chaves direcionais e bases de IV via HKDF-SHA256,
+    e imediatamente zeroiza Z_AB e PRK da memória.
 
-    Direction resolution:
-    - If `is_role_a` is explicitly passed, uses True -> A (send=A2B, recv=B2A), False -> B.
-    - Else if `local_id` and `peer_id` are provided, orders deterministically by client_id
-      (the smaller client_id is A, the larger is B).
-    - Otherwise defaults to role A (send=A2B, recv=B2A).
+    Resolução de direção:
+    - Se `is_role_a` for passado explicitamente, True -> A (send=A2B, recv=B2A), False -> B.
+    - Caso contrário, se `local_id` e `peer_id` forem informados, ordena deterministicamente por client_id
+      (o menor client_id assume papel A, o maior assume papel B).
+    - Caso contrário, assume o padrão de papel A (send=A2B, recv=B2A).
     """
     shared_secret = bytearray()
     prk = bytearray()
@@ -482,7 +482,7 @@ def derive_e2e_session_keys(
 
 
 def build_nonce(iv_base: bytes, seq_no: int) -> bytes:
-    """Construct the 12-byte AES-GCM Nonce: IV_base (4B) || seq_no (8B, big-endian)."""
+    """Constrói o Nonce de 12 bytes do AES-GCM: IV_base (4B) || seq_no (8B, big-endian)."""
     if len(iv_base) != IV_BASE_SIZE:
         raise ValueError(f"iv_base must be {IV_BASE_SIZE} bytes, got {len(iv_base)}.")
     if not (0 <= seq_no <= MAX_SEQ_NO):
@@ -491,7 +491,7 @@ def build_nonce(iv_base: bytes, seq_no: int) -> bytes:
 
 
 def build_aad(sender_id: bytes, recipient_id: bytes, seq_no: int) -> bytes:
-    """Construct the 40-byte Associated Data (AAD):
+    """Constrói os Dados Associados (AAD) de 40 bytes:
     sender_id (16B) || recipient_id (16B) || seq_no (8B, big-endian).
     """
     if len(sender_id) != CLIENT_ID_SIZE:
@@ -509,10 +509,10 @@ def encrypt_aes_gcm(
     plaintext: bytes,
     aad: bytes,
 ) -> tuple[bytes, bytes]:
-    """Encrypt plaintext using AES-128-GCM with AAD.
+    """Cifra texto em claro usando AES-128-GCM com AAD.
 
-    Returns:
-        A tuple of (ciphertext, tag) where tag is 16 bytes.
+    Retorna:
+        Uma tupla de (ciphertext, tag) onde a tag tem 16 bytes.
     """
     if len(key) != AES_KEY_SIZE:
         raise ValueError(f"AES-128-GCM key must be {AES_KEY_SIZE} bytes, got {len(key)}.")
@@ -537,10 +537,10 @@ def decrypt_aes_gcm(
     tag: bytes,
     aad: bytes,
 ) -> bytes:
-    """Decrypt and verify an AES-128-GCM payload and 16-byte authentication tag.
+    """Decifra e verifica um payload AES-128-GCM e a tag de autenticação de 16 bytes.
 
-    Raises:
-        InvalidTag: If the ciphertext, AAD, nonce, or tag was tampered with.
+    Lança:
+        InvalidTag: Se o texto cifrado, AAD, nonce ou tag tiverem sido adulterados.
     """
     if len(key) != AES_KEY_SIZE:
         raise ValueError(f"AES-128-GCM key must be {AES_KEY_SIZE} bytes, got {len(key)}.")
@@ -554,7 +554,5 @@ def decrypt_aes_gcm(
         )
 
     aesgcm = AESGCM(bytes(key))
-    # InvalidTag is raised directly if verification fails
+    # InvalidTag é lançada diretamente se a verificação de integridade/autenticidade falhar
     return aesgcm.decrypt(bytes(nonce), bytes(ciphertext) + bytes(tag), bytes(aad))
-
-

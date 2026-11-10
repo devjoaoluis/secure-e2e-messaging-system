@@ -1,8 +1,8 @@
-"""Tampering / Bitflip Security Validation Tests (tests/test_bitflip.py).
+"""Testes de Validação de Segurança contra Adulteração / Bitflip (tests/test_bitflip.py).
 
-Validates that modifying even a single bit in the ciphertext, Associated Data (AAD),
-nonce, or 16-byte authentication tag causes AES-128-GCM verification to fail immediately
-with InvalidTag (or FramingError if nonce/seq_no consistency is violated).
+Valida que modificar mesmo um único bit no texto cifrado, Dados Associados (AAD),
+nonce ou na tag de autenticação de 16 bytes faz a verificação AES-128-GCM falhar imediatamente
+com InvalidTag (ou FramingError se a consistência de nonce/seq_no for violada).
 """
 
 import os
@@ -66,7 +66,7 @@ def test_bitflip_in_ciphertext_raises_invalid_tag():
     )
     raw = frame.pack()
 
-    # Flip 1 bit in the middle of the ciphertext (after the 52-byte header)
+    # Inverte 1 bit no meio do texto cifrado (após o cabeçalho de 52 bytes)
     tampered_raw = _flip_bit(raw, E2E_HEADER_SIZE + len(plaintext) // 2, 0x01)
     tampered_frame = E2EFrame.unpack(tampered_raw)
 
@@ -90,7 +90,7 @@ def test_bitflip_in_gcm_tag_raises_invalid_tag():
     )
     raw = frame.pack()
 
-    # Flip 1 bit in the last byte of the 16-byte GCM tag
+    # Inverte 1 bit no último byte da tag GCM de 16 bytes
     tampered_raw = _flip_bit(raw, len(raw) - 1, 0x80)
     tampered_frame = E2EFrame.unpack(tampered_raw)
 
@@ -114,13 +114,13 @@ def test_bitflip_in_aad_sender_or_recipient_raises_invalid_tag():
     )
     raw = frame.pack()
 
-    # Byte 15 is inside sender_id (bytes 12..28), which is part of AAD
+    # O byte 15 está dentro de sender_id (bytes 12..28), que faz parte do AAD
     tampered_sender_raw = _flip_bit(raw, 15, 0x04)
     tampered_sender_frame = E2EFrame.unpack(tampered_sender_raw)
     with pytest.raises(InvalidTag):
         decrypt_e2e_frame(tampered_sender_frame, key=key, expected_iv_base=iv_base)
 
-    # Byte 30 is inside recipient_id (bytes 28..44), which is part of AAD
+    # O byte 30 está dentro de recipient_id (bytes 28..44), que faz parte do AAD
     tampered_recipient_raw = _flip_bit(raw, 30, 0x02)
     tampered_recipient_frame = E2EFrame.unpack(tampered_recipient_raw)
     with pytest.raises(InvalidTag):
@@ -143,12 +143,12 @@ def test_bitflip_in_nonce_or_seq_no_rejected():
     )
     raw = frame.pack()
 
-    # Flip bit in IV_base portion of nonce (byte 0) without expected_iv_base check -> InvalidTag
+    # Inverte bit na porção IV_base do nonce (byte 0) sem verificação de expected_iv_base -> InvalidTag
     tampered_nonce_raw = _flip_bit(raw, 0, 0x01)
     tampered_nonce_frame = E2EFrame.unpack(tampered_nonce_raw)
     with pytest.raises(InvalidTag):
         decrypt_e2e_frame(tampered_nonce_frame, key=key)
 
-    # With expected_iv_base provided -> caught even before AES-GCM as FramingError
+    # Com expected_iv_base informado -> detectado antes mesmo do AES-GCM como FramingError
     with pytest.raises(FramingError):
         decrypt_e2e_frame(tampered_nonce_frame, key=key, expected_iv_base=iv_base)

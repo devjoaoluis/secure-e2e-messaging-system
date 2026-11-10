@@ -1,4 +1,4 @@
-"""Tests for Developer 1 Task 5: Server Error Handling, Malformed Framing, Disconnect Cleanup, and CLI."""
+"""Testes para a Tarefa 5 do Developer 1: Tratamento de Erros no Servidor, Framing Malformado, Limpeza em Desconexões e CLI."""
 
 import asyncio
 import struct
@@ -39,21 +39,21 @@ def test_server_terminates_malformed_framing_connection_without_affecting_health
                     break
                 await asyncio.sleep(0.02)
 
-            # Rogue client connects and sends a malformed 4-byte length prefix (declares 500B, closes after 5B)
+            # Cliente malicioso conecta e envia um prefixo de 4 bytes malformado (declara 500B, fecha após 5B)
             _, rogue_writer = await asyncio.open_connection("127.0.0.1", server.port)
             rogue_writer.write(struct.pack("!I", 500) + b"short")
             await rogue_writer.drain()
             rogue_writer.close()
             await rogue_writer.wait_closed()
 
-            # Another rogue client sends an oversized 4-byte length prefix (999999 bytes)
+            # Outro cliente malicioso envia um prefixo de 4 bytes superdimensionado (999999 bytes)
             _, rogue_writer2 = await asyncio.open_connection("127.0.0.1", server.port)
             rogue_writer2.write(struct.pack("!I", 999999) + b"bad")
             await rogue_writer2.drain()
             await asyncio.sleep(0.05)
             rogue_writer2.close()
 
-            # Verify Alice and Bob can still exchange encrypted messages normally
+            # Verifica se Alice e Bob ainda conseguem trocar mensagens cifradas normalmente
             await alice.send_message(bob.client_id, "Still alive after malformed framing attack")
             for _ in range(20):
                 if bob_inbox:
@@ -99,7 +99,7 @@ def test_client_disconnect_clears_server_session_and_notifies_remaining_peers():
             assert server.session_store.get_session(bob_id) is not None
             assert bob_id in alice.session.peers
 
-            # Bob disconnects -> Server removes Bob's session and notifies Alice
+            # Bob desconecta -> Servidor remove a sessão de Bob e notifica Alice
             await bob.close()
 
             for _ in range(25):

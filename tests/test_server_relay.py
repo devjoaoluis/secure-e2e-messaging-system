@@ -1,4 +1,4 @@
-"""Unit tests for Developer 1 Task 4: Zero-Knowledge E2E Frame Relay & Routing (tests/test_server_relay.py)."""
+"""Testes unitários para a Tarefa 4 do Developer 1: Roteamento e Relay de Frames E2E Zero-Knowledge (tests/test_server_relay.py)."""
 
 import asyncio
 import logging
@@ -59,18 +59,18 @@ def test_zero_knowledge_multi_client_routing_and_log_audit(caplog):
                     break
                 await asyncio.sleep(0.02)
 
-            # Verify selective routing: Charlie never receives Alice->Bob message
+            # Verifica roteamento seletivo: Charlie nunca recebe a mensagem entre Alice e Bob
             assert inbox_b == [(alice.client_id, msg_ab.encode("utf-8"))]
             assert inbox_c == [(bob.client_id, msg_bc.encode("utf-8"))]
             assert inbox_a == []
 
-            # Verify server routing counters
+            # Verifica contadores de roteamento do servidor
             assert server.session_store.get_session(alice.client_id).frames_sent == 1
             assert server.session_store.get_session(bob.client_id).frames_received == 1
             assert server.session_store.get_session(bob.client_id).frames_sent == 1
             assert server.session_store.get_session(charlie.client_id).frames_received == 1
 
-            # Zero-Knowledge Log Audit: server logs routing headers, never plaintexts or keys
+            # Auditoria de Logs Zero-Knowledge: servidor loga apenas cabeçalhos de roteamento, nunca plaintexts ou chaves
             assert "Relayed opaque E2E frame" in caplog.text
             assert msg_ab not in caplog.text
             assert msg_bc not in caplog.text
@@ -110,7 +110,7 @@ def test_relay_drops_sender_spoofed_and_offline_recipient_frames():
                     break
                 await asyncio.sleep(0.02)
 
-            # Craft a frame where Alice spoofs sender_id as a random fake ID
+            # Forja um frame onde Alice tenta falsificar o sender_id com um ID falso aleatório
             legit_frame = alice.session.encrypt_message(bob.client_id, b"Spoof attempt")
             spoofed_frame = E2EFrame(
                 nonce=legit_frame.nonce,
@@ -123,7 +123,7 @@ def test_relay_drops_sender_spoofed_and_offline_recipient_frames():
             assert alice._writer is not None
             await write_tcp_frame(alice._writer, spoofed_frame.pack())
 
-            # Also send a frame addressed to a non-existent offline recipient
+            # Envia também um frame endereçado a um destinatário inexistente/offline
             offline_frame = E2EFrame(
                 nonce=legit_frame.nonce,
                 sender_id=alice.client_id,

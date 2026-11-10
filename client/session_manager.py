@@ -1,15 +1,15 @@
-"""Client-side peer session management, HKDF key derivation, IV tracking, and anti-replay state.
+"""Gerenciamento de sessão de peers do lado do cliente, derivação de chaves HKDF, rastreamento de IV e estado anti-replay.
 
-Maintains the `peers` dictionary mapping each peer's 16-byte `client_id` to its
-cryptographic session state:
-- Directional AES-128-GCM keys (`key_send`, `key_recv`)
-- Directional 4-byte IV bases (`iv_base_send`, `iv_base_recv`)
-- Monotonic 64-bit sequence counters (`seq_send`, `seq_recv`)
+Mantém o dicionário `peers` mapeando cada `client_id` (16 bytes) do peer para o seu
+estado de sessão criptográfica:
+- Chaves direcionais AES-128-GCM (`key_send`, `key_recv`)
+- Bases de IV direcionais de 4 bytes (`iv_base_send`, `iv_base_recv`)
+- Contadores de sequência monotónicos de 64 bits (`seq_send`, `seq_recv`)
 
-Enforces:
-- Strict monotonic sequence numbers (`seq_no > seq_recv`) to prevent replay attacks
-- Tag verification before committing state updates (`seq_recv`) to prevent DoS via forged packets
-- Transient memory model: zeroizes and wipes all peer keys upon disconnection
+Garante:
+- Números de sequência estritamente monotónicos (`seq_no > seq_recv`) para evitar ataques de repetição (replay)
+- Verificação de tag antes de comitar atualizações de estado (`seq_recv`) para evitar DoS por pacotes forjados
+- Modelo de memória transitória: zeroiza e descarta todas as chaves dos peers ao desconectar
 """
 
 from __future__ import annotations
@@ -38,24 +38,24 @@ from common.protocol import (
 
 
 class SessionError(Exception):
-    """Base exception for client session management errors."""
+    """Exceção base para erros de gerenciamento de sessão do cliente."""
 
 
 class UnknownPeerError(SessionError):
-    """Raised when attempting to communicate with an unregistered peer."""
+    """Lançada ao tentar se comunicar com um peer não registrado."""
 
 
 class ReplayAttackError(SessionError):
-    """Raised when an incoming E2E frame has a duplicate or non-monotonic sequence number."""
+    """Lançada quando um frame E2E recebido possui um número de sequência duplicado ou não monotónico."""
 
 
 class RecipientMismatchError(SessionError):
-    """Raised when an incoming E2E frame is not addressed to the local client_id."""
+    """Lançada quando um frame E2E recebido não é endereçado ao client_id local."""
 
 
 @dataclass
 class PeerSession:
-    """Holds directional keys, IV bases, and monotonic counters for a single peer."""
+    """Contém chaves direcionais, bases de IV e contadores monotónicos para um único peer."""
 
     peer_id: bytes
     pk_peer: bytes
@@ -68,14 +68,14 @@ class PeerSession:
     seq_recv: int = -1
 
     def next_send_seq(self) -> int:
-        """Return and increment the 64-bit monotonic send sequence number (starts at 1)."""
+        """Retorna e incrementa o número de sequência de envio monotónico de 64 bits (inicia em 1)."""
         if self.seq_send >= MAX_SEQ_NO:
             raise SessionError("Outgoing sequence counter exhausted; session rekey required.")
         self.seq_send += 1
         return self.seq_send
 
     def verify_monotonic_seq(self, incoming_seq_no: int) -> None:
-        """Ensure incoming_seq_no is strictly greater than the highest accepted seq_recv."""
+        """Garante que incoming_seq_no seja estritamente maior que o maior seq_recv já aceito."""
         if incoming_seq_no <= self.seq_recv:
             raise ReplayAttackError(
                 f"Replay detected from peer {self.peer_id.hex()[:8]}: "
@@ -83,7 +83,7 @@ class PeerSession:
             )
 
     def clear_secrets(self) -> None:
-        """Zeroize sensitive key and IV material in memory."""
+        """Zeroiza materiais sensíveis de chaves e IVs na memória."""
         zeroize(self.key_send)
         zeroize(self.key_recv)
         zeroize(self.iv_base_send)
@@ -92,7 +92,7 @@ class PeerSession:
         self.seq_recv = -1
 
     def __repr__(self) -> str:
-        """Sanitized representation that never exposes keys, IVs, or secrets."""
+        """Representação sanitizada que nunca expõe chaves, IVs ou segredos."""
         return (
             f"PeerSession(peer_id={self.peer_id.hex()[:12]}..., "
             f"seq_send={self.seq_send}, seq_recv={self.seq_recv})"
@@ -100,7 +100,7 @@ class PeerSession:
 
 
 class SessionManager:
-    """Manages the local client's ephemeral identity and active E2E peer sessions."""
+    """Gerencia a identidade efêmera do cliente local e as sessões ativas com peers E2E."""
 
     def __init__(self, client_id: bytes | None = None) -> None:
         if client_id is not None:
@@ -119,7 +119,7 @@ class SessionManager:
         self.peers: Dict[bytes, PeerSession] = {}
 
     def set_server_handshake_context(self, pk_server: bytes, salt_srv: bytes) -> None:
-        """Record verified server ephemeral public key and 16-byte session salt."""
+        """Registra a chave pública efêmera do servidor e o salt de 16 bytes verificados."""
         if len(pk_server) != X25519_KEY_SIZE:
             raise ValueError(f"pk_server must be {X25519_KEY_SIZE} bytes.")
         if len(salt_srv) != SALT_SIZE:
@@ -133,8 +133,8 @@ class SessionManager:
         pk_peer: bytes,
         salt: bytes | None = None,
     ) -> PeerSession:
-        """Compute Z_AB = ECDH(sk_client, pk_peer), derive directional keys with HKDF-SHA256,
-        zeroize Z_AB, and store the peer state in `self.peers`.
+        """Calcula Z_AB = ECDH(sk_client, pk_peer), deriva chaves direcionais com HKDF-SHA256,
+        zeroiza Z_AB e armazena o estado do peer em `self.peers`.
         """
         if len(peer_id) != CLIENT_ID_SIZE:
             raise ValueError(f"peer_id must be {CLIENT_ID_SIZE} bytes.")
@@ -147,7 +147,7 @@ class SessionManager:
         if effective_salt is None:
             raise SessionError("Cannot derive peer keys without a 16-byte server salt.")
 
-        # If replacing an existing peer session, zeroize old keys first
+        # Se substituir uma sessão de peer já existente, zeroiza as chaves antigas primeiro
         if peer_id in self.peers:
             self.peers[peer_id].clear_secrets()
 
@@ -174,21 +174,21 @@ class SessionManager:
         return session
 
     def remove_peer(self, peer_id: bytes) -> None:
-        """Zeroize and remove a single peer's session state."""
+        """Zeroiza e remove o estado de sessão de um único peer."""
         session = self.peers.pop(bytes(peer_id), None)
         if session is not None:
             session.clear_secrets()
 
     def get_peer(self, peer_id: bytes) -> PeerSession:
-        """Retrieve an active PeerSession or raise UnknownPeerError."""
+        """Recupera uma PeerSession ativa ou lança UnknownPeerError."""
         session = self.peers.get(bytes(peer_id))
         if session is None:
             raise UnknownPeerError(f"Peer {peer_id.hex()[:8]} is not registered.")
         return session
 
     def encrypt_message(self, recipient_id: bytes, plaintext: bytes) -> E2EFrame:
-        """Encrypt a plaintext message for `recipient_id` using its directional send key
-        and next monotonic `seq_no`.
+        """Cifra uma mensagem em texto claro para `recipient_id` usando sua chave direcional de envio
+        e o próximo `seq_no` monotónico.
         """
         peer = self.get_peer(recipient_id)
         seq_no = peer.next_send_seq()
@@ -202,17 +202,17 @@ class SessionManager:
         )
 
     def decrypt_frame(self, frame: E2EFrame | bytes) -> tuple[bytes, bytes]:
-        """Validate and decrypt an incoming E2EFrame (or raw frame bytes).
+        """Valida e decifra um E2EFrame recebido (ou bytes brutos do frame).
 
-        Performs:
-        1. Recipient verification (frame.recipient_id == self.client_id)
-        2. Sender lookup in `self.peers`
-        3. Anti-replay check (frame.seq_no > peer.seq_recv)
-        4. Nonce IV_base & AES-128-GCM tag verification
-        5. Monotonic counter update (`peer.seq_recv = frame.seq_no`) ONLY after tag passes
+        Executa:
+        1. Verificação do destinatário (frame.recipient_id == self.client_id)
+        2. Busca do remetente em `self.peers`
+        3. Verificação anti-replay (frame.seq_no > peer.seq_recv)
+        4. Verificação da base de IV do nonce e da tag de autenticação AES-128-GCM
+        5. Atualização do contador monotónico (`peer.seq_recv = frame.seq_no`) SOMENTE após a tag ser validada
 
-        Returns:
-            A tuple of (sender_id, decrypted_plaintext).
+        Retorna:
+            Uma tupla de (sender_id, decrypted_plaintext).
         """
         parsed = E2EFrame.unpack(frame) if isinstance(frame, (bytes, bytearray, memoryview)) else frame
         if not isinstance(parsed, E2EFrame):
@@ -225,23 +225,23 @@ class SessionManager:
 
         peer = self.get_peer(parsed.sender_id)
 
-        # Step 1: Reject replay or out-of-order sequence numbers before decryption
+        # Passo 1: Rejeita replay ou número de sequência fora de ordem antes da decifração
         peer.verify_monotonic_seq(parsed.seq_no)
 
-        # Step 2: Verify nonce structure and AES-GCM authentication tag
+        # Passo 2: Verifica a estrutura do nonce e a tag de autenticação AES-GCM
         plaintext = decrypt_e2e_frame(
             frame=parsed,
             key=bytes(peer.key_recv),
             expected_iv_base=bytes(peer.iv_base_recv),
         )
 
-        # Step 3: Commit new monotonic sequence number only after authentic decryption
+        # Passo 3: Comita o novo número de sequência monotónico somente após a decifração autêntica
         peer.seq_recv = parsed.seq_no
         return parsed.sender_id, plaintext
 
     def clear(self, rotate_ephemeral_keys: bool = True) -> None:
-        """Transient Memory Model: zeroize all peer keys and wipe session state on disconnect.
-        Optionally rotates the ephemeral X25519 keypair to enforce a full re-handshake.
+        """Modelo de Memória Transitória: zeroiza todas as chaves de peers e limpa o estado de sessão ao desconectar.
+        Opcionalmente rotaciona o par efêmero X25519 para forçar um novo handshake completo.
         """
         for session in self.peers.values():
             session.clear_secrets()
@@ -252,7 +252,7 @@ class SessionManager:
             self._sk_client, self.pk_client = generate_x25519_keypair()
 
     def __repr__(self) -> str:
-        """Sanitized representation that never exposes private keys or session secrets."""
+        """Representação sanitizada que nunca expõe chaves privadas ou segredos de sessão."""
         return (
             f"SessionManager(client_id={self.client_id.hex()[:12]}..., "
             f"active_peers={len(self.peers)})"

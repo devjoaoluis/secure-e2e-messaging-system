@@ -1,9 +1,9 @@
-"""Multi-client TCP asynchronous relay server (server/server.py).
+"""Servidor relay TCP assíncrono multi-cliente (server/server.py).
 
-Implements:
-- Concurrent multi-client TCP socket management using `asyncio`
-- RSA-PSS (SHA-256) authenticated handshake using `certs/server.crt` and `certs/server.key`
-- Key exchange broadcast distributing active peers' ephemeral X25519 public keys
+Implementa:
+- Gerenciamento concorrente de sockets TCP multi-cliente usando `asyncio`
+- Handshake autenticado via RSA-PSS (SHA-256) usando `certs/server.crt` e `certs/server.key`
+- Broadcast de troca de chaves distribuindo chaves públicas efêmeras X25519 de peers ativos
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 import sys
 
-# Ensure project root is on sys.path when invoked as `python server/server.py`
+# Garante que a raiz do projeto esteja no sys.path quando executado como `python server/server.py`
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
@@ -43,7 +43,7 @@ logger = logging.getLogger("e2e.server")
 
 
 class RelayServer:
-    """Multi-client TCP asynchronous rendezvous and relay server."""
+    """Servidor TCP assíncrono de encontro (rendezvous) e relay multi-cliente."""
 
     def __init__(
         self,
@@ -73,7 +73,7 @@ class RelayServer:
         self._server: asyncio.AbstractServer | None = None
 
     async def start(self) -> None:
-        """Start listening for concurrent incoming TCP client connections."""
+        """Inicia a escuta de conexões TCP simultâneas de clientes."""
         self._server = await asyncio.start_server(
             self._handle_client_connection,
             self.host,
@@ -85,7 +85,7 @@ class RelayServer:
         logger.info("RelayServer listening on %s:%d", self.host, self.port)
 
     async def stop(self) -> None:
-        """Close all active client connections, wipe session store, and stop the TCP server."""
+        """Fecha todas as conexões ativas, limpa o armazenamento de sessões e para o servidor TCP."""
         for session in list(self.session_store.sessions.values()):
             if session.writer is not None:
                 try:
@@ -106,10 +106,10 @@ class RelayServer:
         reader: asyncio.StreamReader,
         writer: asyncio.StreamWriter,
     ) -> ClientSession:
-        """Execute Steps 1-3 of the protocol:
-        1. Receive ClientHello (client_id + pk_client)
-        2. Sign H = SHA256(pk_server || pk_client || client_id || salt) with RSA-PSS and send ServerHello
-        3. Register client session and broadcast ephemeral X25519 public keys across active peers
+        """Executa os Passos 1 a 3 do protocolo:
+        1. Recebe ClientHello (client_id + pk_client)
+        2. Assina H = SHA256(pk_server || pk_client || client_id || salt) com RSA-PSS e envia ServerHello
+        3. Registra a sessão do cliente e faz broadcast das chaves públicas efêmeras X25519 entre peers ativos
         """
         raw_hello = await read_tcp_frame(reader)
         client_hello = ClientHello.unpack(raw_hello)
@@ -160,8 +160,8 @@ class RelayServer:
         new_session: ClientSession,
         existing_peers: list[ClientSession],
     ) -> None:
-        """Distribute existing peers' public keys to the newcomer and broadcast the newcomer's
-        public key to all existing active peers.
+        """Distribui as chaves públicas dos peers existentes ao recém-chegado e faz broadcast
+        da chave pública do recém-chegado a todos os peers ativos existentes.
         """
         if new_session.writer is None:
             return
@@ -173,7 +173,7 @@ class RelayServer:
         ).pack()
 
         for peer in existing_peers:
-            # Send existing peer's public key to the newcomer
+            # Envia a chave pública do peer existente para o recém-chegado
             peer_announcement = PeerKeyAnnouncement(
                 peer_id=peer.client_id,
                 pk_peer=peer.pk_client,
@@ -181,7 +181,7 @@ class RelayServer:
             ).pack()
             await write_tcp_frame(new_session.writer, peer_announcement)
 
-            # Send newcomer's public key to the existing peer
+            # Envia a chave pública do recém-chegado para o peer existente
             if peer.writer is not None and not peer.writer.is_closing():
                 try:
                     await write_tcp_frame(peer.writer, newcomer_announcement)
@@ -189,7 +189,7 @@ class RelayServer:
                     pass
 
     async def _broadcast_peer_disconnect(self, disconnected_client_id: bytes) -> None:
-        """Notify remaining active peers that a client disconnected so they wipe its session."""
+        """Notifica os peers ativos restantes que um cliente desconectou para que limpem sua sessão."""
         disconnect_packet = bytes([PacketType.PEER_DISCONNECT]) + bytes(disconnected_client_id)
         for peer in self.session_store.get_other_sessions(disconnected_client_id):
             if peer.writer is not None and not peer.writer.is_closing():
@@ -254,8 +254,8 @@ class RelayServer:
         session: ClientSession,
         raw_frame: bytes,
     ) -> None:
-        """Zero-Knowledge Relay: inspect only the routing header (`sender_id`, `recipient_id`, `seq_no`)
-        and forward the opaque encrypted frame bytes to the target recipient without decrypting.
+        """Relay Zero-Knowledge: inspeciona apenas o cabeçalho de roteamento (`sender_id`, `recipient_id`, `seq_no`)
+        e encaminha os bytes opacos do frame cifrado para o destinatário alvo sem decifrar.
         """
         frame_bytes = (
             raw_frame[1:]
@@ -303,7 +303,7 @@ async def run_server(
     cert_path: str,
     key_path: str,
 ) -> None:
-    """Start the relay server and run until interrupted."""
+    """Inicia o servidor relay e executa até ser interrompido."""
     server = RelayServer(
         host=host,
         port=port,
@@ -323,17 +323,17 @@ async def run_server(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Multi-Client E2E Zero-Knowledge Relay Server")
-    parser.add_argument("--host", default="127.0.0.1", help="Bind address (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=9000, help="TCP listen port (default: 9000)")
+    parser.add_argument("--host", default="127.0.0.1", help="Endereço de bind (padrão: 127.0.0.1)")
+    parser.add_argument("--port", type=int, default=9000, help="Porta TCP de escuta (padrão: 9000)")
     parser.add_argument(
         "--cert",
         default="certs/server.crt",
-        help="Path to server X.509 certificate (default: certs/server.crt)",
+        help="Caminho para o certificado X.509 do servidor (padrão: certs/server.crt)",
     )
     parser.add_argument(
         "--key",
         default="certs/server.key",
-        help="Path to server RSA private key (default: certs/server.key)",
+        help="Caminho para a chave privada RSA do servidor (padrão: certs/server.key)",
     )
     return parser.parse_args(argv)
 
@@ -352,5 +352,3 @@ def main(argv: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     main()
-
-

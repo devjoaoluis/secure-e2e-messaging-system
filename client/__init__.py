@@ -1,1 +1,1 @@
-"""E2E secure messaging client package."""
+"""Pacote do cliente de mensageria segura E2E."""
